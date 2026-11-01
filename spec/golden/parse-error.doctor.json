@@ -1,0 +1,20 @@
+{
+  "envelope": "dsh-doctor/v1",
+  "findings": [
+    {
+      "checkId": "F16",
+      "severity": "error",
+      "code": "E_PROFILE_PARSE",
+      "category": "config",
+      "params": {
+        "file": "profiles\\desktop\\cordis.yml",
+        "line": 1
+      },
+      "fallbackMessage": "Profile file is not parseable",
+      "repair": {
+        "kind": "auto",
+        "planHint": "restore-snapshot"
+      }
+    }
+  ]
+}

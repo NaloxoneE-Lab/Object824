@@ -1,0 +1,20 @@
+{
+  "envelope": "dsh-doctor/v1",
+  "findings": [
+    {
+      "checkId": "F20",
+      "severity": "error",
+      "code": "E_HALF_INSTALL",
+      "category": "install",
+      "params": {
+        "journal": "install-1.json",
+        "state": "applying"
+      },
+      "fallbackMessage": "An install was interrupted and never finished",
+      "repair": {
+        "kind": "manual",
+        "planHint": "rollback-or-reinstall"
+      }
+    }
+  ]
+}

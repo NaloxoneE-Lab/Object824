@@ -1,0 +1,9 @@
+{
+  "id": "<PLAN_ID>",
+  "installId": "<INSTALL_ID>",
+  "root": "<ROOT>",
+  "createdAt": "<TIMESTAMP>",
+  "expiresAt": "<TIMESTAMP>",
+  "steps": [],
+  "fingerprint": {}
+}

@@ -1,0 +1,21 @@
+{
+  "envelope": "dsh-doctor/v1",
+  "findings": [
+    {
+      "checkId": "F04",
+      "severity": "error",
+      "code": "E_BRIDGE_DANGLING",
+      "category": "plugin",
+      "params": {
+        "package": "@deepseek-ai/dsh-base",
+        "path": "vendor\\plugins\\dsh-demo-plugin\\node_modules\\@deepseek-ai\\dsh-base",
+        "plugin": "dsh-demo-plugin"
+      },
+      "fallbackMessage": "Dangling dependency bridge",
+      "repair": {
+        "kind": "auto",
+        "planHint": "rebuild-bridge"
+      }
+    }
+  ]
+}

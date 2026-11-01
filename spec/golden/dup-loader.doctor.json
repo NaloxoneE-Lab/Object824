@@ -1,0 +1,18 @@
+{
+  "envelope": "dsh-doctor/v1",
+  "findings": [
+    {
+      "checkId": "F03",
+      "severity": "warning",
+      "code": "E_DUP_LOADER",
+      "category": "config",
+      "params": {
+        "duplicates": 1,
+        "ids": [
+          "dsh-echo"
+        ]
+      },
+      "fallbackMessage": "Duplicate plugin entry"
+    }
+  ]
+}

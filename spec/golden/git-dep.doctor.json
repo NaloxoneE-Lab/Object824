@@ -1,0 +1,20 @@
+{
+  "envelope": "dsh-doctor/v1",
+  "findings": [
+    {
+      "checkId": "F17",
+      "severity": "error",
+      "code": "E_PNPM_BUILD_BLOCKED",
+      "category": "plugin",
+      "params": {
+        "key": "dshmarket@git+https://github.com/deepseek-ai/dshmarket.git",
+        "package": "dshmarket"
+      },
+      "fallbackMessage": "pnpm build scripts are not allowed for this dependency",
+      "repair": {
+        "kind": "auto",
+        "planHint": "allow-builds"
+      }
+    }
+  ]
+}

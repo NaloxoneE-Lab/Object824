@@ -1,0 +1,19 @@
+{
+  "id": "<PLAN_ID>",
+  "installId": "<INSTALL_ID>",
+  "root": "<ROOT>",
+  "createdAt": "<TIMESTAMP>",
+  "expiresAt": "<TIMESTAMP>",
+  "steps": [
+    {
+      "kind": "allow-builds",
+      "path": "<ROOT>\\profiles\\desktop\\pnpm-workspace.yaml",
+      "args": [
+        "dshmarket@git+https://github.com/deepseek-ai/dshmarket.git"
+      ]
+    }
+  ],
+  "fingerprint": {
+    "profiles/desktop/pnpm-workspace.yaml": "e7987c113d261412264ca571fc344b95b17c0c09ab399a62fc7e47b05362a2af"
+  }
+}

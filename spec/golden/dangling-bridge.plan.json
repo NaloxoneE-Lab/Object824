@@ -1,0 +1,15 @@
+{
+  "id": "<PLAN_ID>",
+  "installId": "<INSTALL_ID>",
+  "root": "<ROOT>",
+  "createdAt": "<TIMESTAMP>",
+  "expiresAt": "<TIMESTAMP>",
+  "steps": [
+    {
+      "kind": "rebuild-bridge",
+      "path": "<ROOT>\\vendor\\plugins\\dsh-demo-plugin\\node_modules\\@deepseek-ai\\dsh-base",
+      "from": "<ROOT>\\profiles\\desktop\\node_modules\\@deepseek-ai\\dsh-base"
+    }
+  ],
+  "fingerprint": {}
+}
