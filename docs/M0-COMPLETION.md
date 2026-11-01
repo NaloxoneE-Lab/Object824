@@ -65,6 +65,17 @@ spike 代码留在 `spikes/yaml-spike/`（独立 workspace，`exclude` 出主图
 - `node_modules` 条目是**真链接**（symlink，失败退 junction），测试用 `canonicalize` 断言它确实指向 `vendor/`，不是复制出来的目录。
 - asar 按 `week1/05` 的字节格式写，读端走的是 `discovery::parse_asar_version` 的真实代码路径。
 
+## 规格勘误（四处，已核对到真机/真代码，后面别再踩）
+
+| 文档怎么说 | 实际是什么 | 影响 |
+|---|---|---|
+| `week1/02`："1545 **行**的 `cordis.patch.yml`" | 1545 **字节 / 55 行** | 按行数估工作量会离谱；spike 按真实文件跑，结论不变 |
+| `week1/01`："`model` / `errs` 不许依赖任何内部 crate" | `model → errs` 是必需的（finding 带 `Code`；Go 版 `internal/model` 同样 import `internal/errs`） | 规则改成"`errs` 零内部依赖，`model` 只能依赖 `errs`"，测试照此钉住 |
+| `spec/golden/README.md`："`steps` 为空时 Go 输出 `null`，这也属于契约，不要顺手修正为 `[]`" | **反了**。`ok.plan.json` 里就是 `[]`；`internal/plan/plan.go:416` 明确写了"`"steps": null` would be wrong"，并显式把 nil slice 换成 `[]Step{}` | **M2 必看**：Rust 侧输出 `[]`，不要为了"对齐文档"去输出 `null` |
+| `MIGRATION-RUST.md`："16 个 crate" | 18 个（多 `o824-version`：`week1/04` 要求；多 `o824-conformance`：`week1/03` 要求） | 只是计数口径，不影响构建 |
+
+判定原则不变：**golden 文件 > 文档描述**，因为 golden 是逐字节比对的机器契约。
+
 ## 环境决策（会影响后面每个人）
 
 **工具链只装在 `o824-rs/.toolchain/`，不写 `C:\`、不改 PATH、不改注册表。**

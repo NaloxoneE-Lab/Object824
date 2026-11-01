@@ -26,11 +26,9 @@ use std::process::ExitCode;
 use similar::{ChangeTag, TextDiff};
 
 /// The real profile the experiments run against.
-const DEFAULT_PATCH: &str =
-    r"C:\Users\X_Cyanogen\.dsh\profiles\desktop\cordis.patch.yml";
+const DEFAULT_PATCH: &str = r"C:\Users\X_Cyanogen\.dsh\profiles\desktop\cordis.patch.yml";
 /// The real pnpm workspace file next to it.
-const DEFAULT_WORKSPACE: &str =
-    r"C:\Users\X_Cyanogen\.dsh\profiles\desktop\pnpm-workspace.yaml";
+const DEFAULT_WORKSPACE: &str = r"C:\Users\X_Cyanogen\.dsh\profiles\desktop\pnpm-workspace.yaml";
 /// The entry operation B deletes.
 const TARGET_LOADER_ID: &str = "opencode-go";
 /// The approval key operation C inserts.
@@ -97,7 +95,11 @@ fn main() -> ExitCode {
             );
             println!(
                 "A:     {}",
-                if emitted == patch_text { "PASS" } else { "FAIL (comments and ordering rewritten)" }
+                if emitted == patch_text {
+                    "PASS"
+                } else {
+                    "FAIL (comments and ordering rewritten)"
+                }
             );
             failures += 1;
         }
@@ -117,8 +119,15 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let round_trip = ranges.iter().map(|range| range.slice(&patch_text)).collect::<String>();
-    let unchanged = format!("{}{}", prefix_before_first_entry(&patch_text, &ranges), round_trip);
+    let round_trip = ranges
+        .iter()
+        .map(|range| range.slice(&patch_text))
+        .collect::<String>();
+    let unchanged = format!(
+        "{}{}",
+        prefix_before_first_entry(&patch_text, &ranges),
+        round_trip
+    );
     report("A (round-trip identical)", &patch_text, &unchanged, 0);
     if !patch_text_stable(&patch_text, &unchanged) {
         failures += 1;
@@ -198,7 +207,9 @@ fn env_or_default(name: &str, default: &str) -> PathBuf {
 }
 
 fn count_comments(text: &str) -> usize {
-    text.lines().filter(|line| line.trim_start().starts_with('#')).count()
+    text.lines()
+        .filter(|line| line.trim_start().starts_with('#'))
+        .count()
 }
 
 fn report(label: &str, expected: &str, actual: &str, _context: usize) {
