@@ -5,7 +5,7 @@
 
 - 决策日期：2026-11-01
 - 参考实现：`D:\dsh work\Object 824`，tag `v0-go-reference`（冻结，可运行，当 oracle）
-- 目标仓库：`D:\dsh work\o824-rs`
+- 目标仓库：`D:\dsh work\Object 824\o824-rs`
 - 团队假设：3 人（下文称 A / B / C），都熟 Rust，**都不熟 DSH 的内部细节**——所以文档和 golden 是唯一的事实源
 
 ---
