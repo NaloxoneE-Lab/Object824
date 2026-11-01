@@ -14,7 +14,9 @@
 pub mod discover;
 pub mod doctor;
 pub mod flags;
+pub mod install;
 pub mod render;
+pub mod repair;
 
 use std::io::Write;
 
@@ -81,10 +83,11 @@ pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i
         }
         "discover" => discover::run(&args[1..], stdout, stderr),
         "doctor" => doctor::run(&args[1..], stdout, stderr),
+        "repair" => repair::run(&args[1..], stdout, stderr),
         other => {
             let _ = writeln!(
                 stderr,
-                "o824: unknown command {other:?} (available in this build: discover, doctor)"
+                "o824: unknown command {other:?} (available in this build: discover, doctor, repair)"
             );
             EXIT_USAGE
         }

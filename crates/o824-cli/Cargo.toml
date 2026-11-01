@@ -11,6 +11,7 @@ description = "subcommand parsing, exit codes, and human-facing rendering."
 o824-discovery.workspace = true
 o824-errs.workspace = true
 o824-model.workspace = true
+o824-plan.workspace = true
 o824-state.workspace = true
 o824-verify.workspace = true
 o824-version.workspace = true

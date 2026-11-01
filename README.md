@@ -12,7 +12,8 @@ O824 内核的 Rust 实现。**Go 版（`D:\dsh work\Object 824`，tag `v0-go-re
 
 | 顺序 | 文件 | 为什么 |
 |---|---|---|
-| 0 | [`docs/M1-REPORT.md`](docs/M1-REPORT.md) | **现在在哪**：门 G1（8 个 doctor golden 全绿）的判据与证据 |
+| 0 | [`docs/M2-REPORT.md`](docs/M2-REPORT.md) | **现在在哪**：门 G2（8 个 plan golden 全绿，含确定性） |
+| 0.2 | [`docs/M1-REPORT.md`](docs/M1-REPORT.md) | 门 G1 的判据与证据 |
 | 0.5 | [`docs/M0-COMPLETION.md`](docs/M0-COMPLETION.md) | 门 G0 的判据、证据、以及还没做到的那一条 |
 | 1 | [`docs/PORTING-NOTES.md`](docs/PORTING-NOTES.md) | **必读**。九条用真机调试换来的结论，漏一条就会重踩 |
 | 2 | [`docs/MIGRATION-ROADMAP.md`](docs/MIGRATION-ROADMAP.md) | **路线图**：5 个里程碑、门 G0–G5、11 周排期、卡住了怎么办 |

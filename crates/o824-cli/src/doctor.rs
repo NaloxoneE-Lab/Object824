@@ -147,133 +147,19 @@ pub fn run_with(
 
 /// Resolves the installation to diagnose.
 ///
-/// `--root` bypasses discovery's machine scan: the path is taken as given, and it
-/// doubles as the DSH home unless `--home` overrides that. Otherwise `--install`
-/// selects one discovered installation by id; with neither flag doctor refuses to
-/// guess, because diagnosing the wrong installation is worse than not diagnosing
-/// at all.
+/// The rules are shared with `discover` and `repair`: an explicit `--root` is
+/// inspected, and a named `--install` goes through the machine scan.
 fn select_install(
     install_id: Option<&str>,
     root: Option<&str>,
     home: Option<&str>,
 ) -> Result<Install, Error> {
-    if let Some(root) = root {
-        // A typo'd --root must fail instead of diagnosing nothing and exiting 0
-        // with "no findings". The path is inspected, never created.
-        require_root_dir(root)?;
-        let home = home.unwrap_or(root);
-        // Profiles are enumerated from the home the same way discovery does, so
-        // a tree whose only profile is web, tui, or headless is diagnosed too.
-        // Falling back to desktop here would silently report such a tree clean.
-        let profiles = o824_discovery::profile_names(Path::new(home));
-        let install_id = match install_id {
-            Some(id) if !id.is_empty() => id.to_owned(),
-            _ => local_install_id(root),
-        };
-        return Ok(Install {
-            install_id,
-            kind: o824_discovery::KIND_DESKTOP.to_owned(),
-            root: root.to_owned(),
-            version: String::new(),
-            profiles,
-            health: String::new(),
-            home: home.to_owned(),
-        });
-    }
-
-    if let Some(install_id) = install_id.filter(|id| !id.is_empty()) {
-        // Selecting by id reuses the machine scan; an explicit root never reaches
-        // this branch, because a root is inspected rather than discovered.
-        let installs = o824_discovery::discover(&o824_discovery::Options {
-            roots: None,
-            extra_dirs: Vec::new(),
-            home: home.map(str::to_owned),
-        })?;
-        return installs
-            .into_iter()
-            .find(|install| install.install_id == install_id)
-            .ok_or_else(|| {
-                Error::new(
-                    Code::Usage,
-                    format!("o824 doctor: no installation with id {install_id:?}"),
-                )
-            });
-    }
-
-    Err(Error::new(
-        Code::Usage,
-        "o824 doctor: pass --install <id> or --root <path>",
-    ))
-}
-
-/// Checks that `root` names a directory.
-fn require_root_dir(root: &str) -> Result<(), Error> {
-    let clean = clean_path(root);
-    let is_dir = std::fs::metadata(&clean)
-        .map(|metadata| metadata.is_dir())
-        .unwrap_or(false);
-    if is_dir {
-        return Ok(());
-    }
-    Err(Error::new(
-        Code::InstallDir,
-        format!("{clean:?} is not an installation directory"),
-    )
-    .with_param("root", clean))
-}
-
-/// Normalises a path the way the reference implementation's `filepath.Clean`
-/// does for the shapes this kernel produces.
-fn clean_path(path: &str) -> String {
-    o824_model::path::clean(Path::new(path))
-        .display()
-        .to_string()
-}
-
-/// Derives the stable store key for a root the user named directly.
-///
-/// It is `local-<12 hex of sha256(lowercased realpath)>`: a root names an
-/// installation even without an `--install` label, and the plan builder refuses
-/// an installation with no id.
-pub fn local_install_id(root: &str) -> String {
-    use sha2::{Digest, Sha256};
-
-    let cleaned = clean_path(root);
-    let resolved = std::fs::canonicalize(&cleaned)
-        .map(|path| o824_verify::strip_nt_namespace(&path).display().to_string())
-        .unwrap_or(cleaned);
-    let mut hasher = Sha256::new();
-    hasher.update(resolved.to_lowercase().as_bytes());
-    let digest = hasher.finalize();
-    let hex: String = digest
-        .iter()
-        .take(6)
-        .map(|byte| format!("{byte:02x}"))
-        .collect();
-    format!("local-{hex}")
+    crate::install::select("doctor", install_id, root, home)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_missing_root_is_e_install_dir() {
-        let error = require_root_dir(r"C:\definitely\not\here").expect_err("must fail");
-        assert_eq!(error.code, Code::InstallDir);
-        assert!(error.fallback.contains("is not an installation directory"));
-        assert!(error.params.contains_key("root"));
-    }
-
-    #[test]
-    fn a_root_without_an_install_flag_still_gets_a_stable_id() {
-        let dir = o824_fixtures::TempDir::new("o824-test-").expect("temp dir");
-        let id = local_install_id(&dir.path().display().to_string());
-        assert!(id.starts_with("local-"), "{id}");
-        assert_eq!(id.len(), "local-".len() + 12);
-        // The same root always produces the same id.
-        assert_eq!(id, local_install_id(&dir.path().display().to_string()));
-    }
 
     #[test]
     fn neither_flag_nor_root_is_a_usage_error() {

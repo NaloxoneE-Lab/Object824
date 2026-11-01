@@ -65,6 +65,76 @@ def normalize(document, root):
     return text
 
 
+def normalize_plan(document, root):
+    """Replace the values no golden can contain, exactly like the Rust harness."""
+    text = json.dumps(document, ensure_ascii=False)
+    replacements = [
+        (str(root).replace("\\", "\\\\"), "<ROOT>"),
+        (str(root), "<ROOT>"),
+        (document.get("id", ""), "<PLAN_ID>"),
+        (document.get("installId", ""), "<INSTALL_ID>"),
+        (document.get("createdAt", ""), "<TIMESTAMP>"),
+        (document.get("expiresAt", ""), "<TIMESTAMP>"),
+    ]
+    # Longest first, so a shorter needle cannot eat part of a longer one.
+    for needle, placeholder in sorted(replacements, key=lambda pair: -len(pair[0])):
+        if needle:
+            text = text.replace(needle, placeholder)
+    return text
+
+
+def plan_checks():
+    """Compare `repair --dry-run --json` against the plan goldens, all three ways."""
+    print("\n== plan goldens ==")
+    failures = 0
+    for kind in KINDS:
+        root = BASE / f"plan-{kind}"
+        root.mkdir()
+        materialise(kind, root)
+
+        data_root = BASE / f"plan-data-{kind}"
+        data_root.mkdir()
+        journal = root / "journal"
+        if journal.is_dir():
+            shutil.copytree(journal, data_root / "journal")
+
+        go = run_json(GO_BIN, ["repair", "--root", str(root), "--home", str(root),
+                               "--dry-run", "--json"], data_root)
+        rust = run_json(RUST_BIN, ["repair", "--root", str(root), "--home", str(root),
+                                   "--dry-run", "--json"], data_root)
+        golden = json.loads((GOLDEN / f"{kind}.plan.json").read_text(encoding="utf-8"))
+
+        go_text = normalize_plan(go, root) if go else ""
+        rust_text = normalize_plan(rust, root) if rust else ""
+        golden_text = json.dumps(golden, ensure_ascii=False)
+
+        verdicts = {
+            "go==golden": go_text == golden_text,
+            "rust==golden": rust_text == golden_text,
+            "go==rust": go_text == rust_text,
+        }
+        ok = all(verdicts.values())
+        failures += 0 if ok else 1
+        print(f"{kind:16}", "PASS" if ok else "FAIL " + json.dumps(verdicts))
+        if not ok:
+            print("  go   :", go_text[:600])
+            print("  rust :", rust_text[:600])
+            print("  golden:", golden_text[:600])
+    return failures
+
+
+def run_json(binary, args, data_root):
+    environment = dict(os.environ)
+    environment["O824_DATA_ROOT"] = str(data_root)
+    result = subprocess.run([str(binary), *args], capture_output=True, text=True, env=environment)
+    if result.returncode != 0:
+        return None
+    try:
+        return json.loads(result.stdout)
+    except ValueError:
+        return None
+
+
 def machine_checks():
     """Compare the two implementations against the real machine, not a fixture.
 
@@ -167,8 +237,9 @@ def main():
             print("  goerr:", go_err[:300])
             print("  rserr:", rs_err[:300])
 
-    print(f"\n{len(KINDS) - failures}/{len(KINDS)} kinds agree")
+    print(f"\n{len(KINDS) - failures}/{len(KINDS)} doctor kinds agree")
 
+    failures += plan_checks()
     failures += machine_checks()
 
     return 0 if failures == 0 else 1

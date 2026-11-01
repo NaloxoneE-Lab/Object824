@@ -19,6 +19,10 @@ use serde_json::{Map, Value};
 
 pub use o824_errs::{Code, Error};
 
+pub mod time;
+
+pub use time::Timestamp;
+
 /// The versioned envelope identifier returned by diagnosis.
 pub const ENVELOPE_ID: &str = "dsh-doctor/v1";
 

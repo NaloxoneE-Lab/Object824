@@ -150,10 +150,10 @@ C    golden fixtures 八棵树 ──  verify  snapshot  cli  mock ──  diagn
 | `discovery` | M1 | ✅ 注册表 + 固定卷 + realpath 去重；真机 `discover` 与 Go 逐字节相同 | | |
 | `fixtures` | M1 | ✅ 八棵树 + junction/symlink，已被 Go oracle 交叉验证 | | G1 |
 | `verify` | M1 | ✅ 七个检查 | | **G1** |
-| `plan` | M2 | ⬜ | | G2 |
-| `snapshot` | M2 | ⬜ | | |
+| `plan` | M2 | ✅ 步骤映射 + TTL + id + 指纹 | | **G2** |
+| `snapshot` | M2 | ✅ create/create_if_changed/list/restore，保留 5 份 | | |
 | `apply` | M3 | ⬜ | | G3 |
-| `cli` | M3 | 🟡 退出码 + `doctor` + `discover` 已实现并与 Go 逐字相同；其余子命令待 M3 | | G3 |
+| `cli` | M3 | 🟡 退出码 + `discover` + `doctor` + `repair --dry-run` 已实现并与 Go 逐字相同；`apply`/`snapshot` 子命令待 M3 | | G3 |
 | `protocol` `mock` | M4 | ⬜ | | G4 |
 | `diagnose` | M5 | ⬜ | | G5 |
 

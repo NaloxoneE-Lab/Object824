@@ -10,3 +10,11 @@ description = "the pure repair planner."
 [dependencies]
 o824-errs.workspace = true
 o824-model.workspace = true
+o824-snapshot.workspace = true
+o824-verify.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+o824-fixtures.workspace = true

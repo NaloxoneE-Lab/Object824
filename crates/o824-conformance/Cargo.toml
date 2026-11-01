@@ -15,5 +15,6 @@ similar.workspace = true
 
 [dev-dependencies]
 o824-cli.workspace = true
+o824-plan.workspace = true
 o824-discovery.workspace = true
 o824-fixtures.workspace = true
