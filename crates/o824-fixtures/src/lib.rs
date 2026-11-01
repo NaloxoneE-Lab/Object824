@@ -14,6 +14,10 @@
 
 #![deny(unsafe_code)]
 
+mod temp;
+
+pub use temp::TempDir;
+
 use std::fmt;
 use std::fs;
 use std::io;
@@ -123,7 +127,7 @@ impl std::error::Error for FixtureError {
 /// One built fixture tree. Dropping it removes the tree.
 #[derive(Debug)]
 pub struct Fixture {
-    dir: tempfile::TempDir,
+    dir: TempDir,
 }
 
 impl Fixture {
@@ -196,13 +200,10 @@ impl Install {
 /// * `dangling-bridge` — F04: an out-of-tree plugin whose bridge is missing.
 /// * `git-dep` — F17: a `git+` dependency missing from `allowBuilds`.
 pub fn build(kind: &str) -> Result<Fixture, FixtureError> {
-    let dir = tempfile::Builder::new()
-        .prefix("o824-fixture-")
-        .tempdir()
-        .map_err(|source| FixtureError::Io {
-            context: "create a temporary directory".to_owned(),
-            source,
-        })?;
+    let dir = TempDir::new("o824-fixture-").map_err(|source| FixtureError::Io {
+        context: "create a temporary directory".to_owned(),
+        source,
+    })?;
     build_at(kind, dir.path())?;
     Ok(Fixture { dir })
 }

@@ -10,3 +10,9 @@ description = "the seven read-only checks that produce findings."
 [dependencies]
 o824-errs.workspace = true
 o824-model.workspace = true
+o824-yaml.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+o824-fixtures.workspace = true

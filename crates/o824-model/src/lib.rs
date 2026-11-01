@@ -22,6 +22,44 @@ pub use o824_errs::{Code, Error};
 /// The versioned envelope identifier returned by diagnosis.
 pub const ENVELOPE_ID: &str = "dsh-doctor/v1";
 
+/// Lexical path helpers shared by every crate that reports a path.
+///
+/// They live in the shared model crate because every layer needs them and the
+/// model is the only crate that sits below all of them; they are pure and pull
+/// in no dependency.
+pub mod path {
+    use std::ffi::OsString;
+    use std::path::{Component, Path, PathBuf};
+
+    /// Normalises a path the way the reference implementation's `filepath.Clean`
+    /// does for the shapes this kernel produces: `.` components are dropped,
+    /// `..` pops one component, redundant separators disappear, and an empty
+    /// result is `.`.
+    ///
+    /// This is lexical, not filesystem-aware: `..` pops even when the component
+    /// it removes is a link target. That matches `filepath.Clean`, which is the
+    /// contract for every path a finding reports.
+    pub fn clean(path: &Path) -> PathBuf {
+        let mut cleaned = PathBuf::new();
+        for component in path.components() {
+            match component {
+                Component::CurDir => {}
+                Component::ParentDir => {
+                    if !cleaned.pop() {
+                        cleaned.push(OsString::from(".."));
+                    }
+                }
+                other => cleaned.push(other.as_os_str()),
+            }
+        }
+        if cleaned.as_os_str().is_empty() {
+            PathBuf::from(".")
+        } else {
+            cleaned
+        }
+    }
+}
+
 /// A finding's severity level.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

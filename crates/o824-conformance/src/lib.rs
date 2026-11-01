@@ -503,12 +503,12 @@ o824-errs.workspace = true
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
-tempfile.workspace = true
+o824-fixtures.workspace = true
 "#;
         let manifest = parse_manifest(text);
         assert_eq!(manifest.name, "o824-demo");
         assert_eq!(manifest.dependencies, ["o824-errs", "serde"]);
-        assert_eq!(manifest.dev_dependencies, ["tempfile"]);
+        assert_eq!(manifest.dev_dependencies, ["o824-fixtures"]);
     }
 
     #[test]
@@ -539,7 +539,7 @@ tempfile.workspace = true
 
     #[test]
     fn a_golden_file_is_only_rewritten_when_asked() {
-        let dir = tempfile::tempdir().expect("tempdir");
+        let dir = o824_fixtures::TempDir::new("o824-test-").expect("temp dir");
         let path = dir.path().join("sample.doctor.json");
         std::fs::write(&path, "a\n").expect("write");
 

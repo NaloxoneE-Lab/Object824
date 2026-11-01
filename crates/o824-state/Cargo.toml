@@ -5,8 +5,10 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "atomic state files: write to a sibling, then rename."
+description = "atomic state files and the per-user data-root rule."
 
 [dependencies]
 o824-errs.workspace = true
 o824-model.workspace = true
+serde.workspace = true
+serde_json.workspace = true

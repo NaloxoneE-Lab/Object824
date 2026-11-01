@@ -21,7 +21,9 @@ thiserror = "1"
 sha2 = "0.10"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 similar = "2"
-tempfile = "3"
+# libyaml, translated to Rust. Chosen so YAML acceptance and parse-error lines
+# match the reference implementation exactly; see crates/o824-yaml/src/lib.rs.
+unsafe-libyaml = "0.2"
 windows = { version = "0.58", features = [
   "Win32_Foundation",
   "Win32_Storage_FileSystem",
@@ -34,6 +36,7 @@ windows = { version = "0.58", features = [
 o824-errs = { path = "crates/o824-errs" }
 o824-model = { path = "crates/o824-model" }
 o824-version = { path = "crates/o824-version" }
+o824-yaml = { path = "crates/o824-yaml" }
 o824-execx = { path = "crates/o824-execx" }
 o824-lock = { path = "crates/o824-lock" }
 o824-state = { path = "crates/o824-state" }

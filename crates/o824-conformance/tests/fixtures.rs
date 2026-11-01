@@ -40,7 +40,7 @@ fn all_eight_kinds_build_and_the_half_install_has_no_asar() {
 
 #[test]
 fn a_tree_that_is_not_an_install_is_reported_as_e_install_dir() {
-    let dir = tempfile::tempdir().expect("tempdir");
+    let dir = o824_fixtures::TempDir::new("o824-test-").expect("temp dir");
     let error = o824_discovery::validate(dir.path()).expect_err("an empty directory");
     assert_eq!(error.code.as_str(), "E_INSTALL_DIR");
 }

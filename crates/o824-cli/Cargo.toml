@@ -8,5 +8,14 @@ publish.workspace = true
 description = "subcommand parsing, exit codes, and human-facing rendering."
 
 [dependencies]
+o824-discovery.workspace = true
 o824-errs.workspace = true
+o824-model.workspace = true
+o824-state.workspace = true
+o824-verify.workspace = true
 o824-version.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+o824-fixtures.workspace = true

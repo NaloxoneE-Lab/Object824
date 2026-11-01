@@ -42,6 +42,7 @@ fn every_expected_crate_is_present() {
         "o824-state",
         "o824-verify",
         "o824-version",
+        "o824-yaml",
     ];
     let mut missing = Vec::new();
     for name in expected {

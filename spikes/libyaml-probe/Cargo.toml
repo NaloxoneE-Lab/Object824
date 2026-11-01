@@ -1,0 +1,11 @@
+[package]
+name = "libyaml-probe"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Its own workspace: a throw-away probe, not part of the shipped graph.
+[workspace]
+
+[dependencies]
+unsafe-libyaml = "0.2"

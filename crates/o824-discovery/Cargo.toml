@@ -15,4 +15,3 @@ serde_json.workspace = true
 
 [dev-dependencies]
 o824-fixtures.workspace = true
-tempfile.workspace = true

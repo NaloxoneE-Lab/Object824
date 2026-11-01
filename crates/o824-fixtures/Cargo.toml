@@ -9,4 +9,3 @@ description = "builds synthetic DeepSeek Harness installation trees for tests."
 
 [dependencies]
 serde_json.workspace = true
-tempfile.workspace = true

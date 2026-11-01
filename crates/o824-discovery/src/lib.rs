@@ -17,10 +17,9 @@
 
 #![forbid(unsafe_code)]
 
-use std::ffi::OsString;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use o824_errs::{Code, Error};
 use o824_model::Install;
@@ -287,24 +286,11 @@ fn is_regular_file(path: &Path) -> bool {
 /// does for the shapes this kernel produces: `.` components are dropped, `..`
 /// pops one component, redundant separators disappear, and an empty result is
 /// `.`.
+///
+/// The implementation lives in the shared model crate, because every layer
+/// needs it and the model is the only crate below all of them.
 pub fn clean_path(path: &Path) -> PathBuf {
-    let mut cleaned = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                if !cleaned.pop() {
-                    cleaned.push(OsString::from(".."));
-                }
-            }
-            other => cleaned.push(other.as_os_str()),
-        }
-    }
-    if cleaned.as_os_str().is_empty() {
-        PathBuf::from(".")
-    } else {
-        cleaned
-    }
+    o824_model::path::clean(path)
 }
 
 #[cfg(test)]
@@ -327,7 +313,7 @@ mod tests {
 
     #[test]
     fn missing_tree_is_an_install_dir_error() {
-        let dir = tempfile::tempdir().expect("tempdir");
+        let dir = o824_fixtures::TempDir::new("o824-test-").expect("temp dir");
         let error = validate(dir.path()).expect_err("an empty directory is not an install");
         assert_eq!(error.code, Code::InstallDir);
         assert!(error.fallback.contains(EXE_NAME));
@@ -368,7 +354,7 @@ mod tests {
 
     #[test]
     fn truncated_asar_yields_no_version() {
-        let dir = tempfile::tempdir().expect("tempdir");
+        let dir = o824_fixtures::TempDir::new("o824-test-").expect("temp dir");
         let path = dir.path().join("app.asar");
         fs::write(&path, b"not an asar").expect("write");
         assert_eq!(parse_asar_version(&path), None);

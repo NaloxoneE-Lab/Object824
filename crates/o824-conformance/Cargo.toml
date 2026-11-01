@@ -14,6 +14,6 @@ serde_json.workspace = true
 similar.workspace = true
 
 [dev-dependencies]
+o824-cli.workspace = true
 o824-discovery.workspace = true
 o824-fixtures.workspace = true
-tempfile.workspace = true

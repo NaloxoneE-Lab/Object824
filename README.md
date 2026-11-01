@@ -12,7 +12,8 @@ O824 内核的 Rust 实现。**Go 版（`D:\dsh work\Object 824`，tag `v0-go-re
 
 | 顺序 | 文件 | 为什么 |
 |---|---|---|
-| 0 | [`docs/M0-COMPLETION.md`](docs/M0-COMPLETION.md) | **现在在哪**：门 G0 的判据、证据、以及还没做到的那一条 |
+| 0 | [`docs/M1-REPORT.md`](docs/M1-REPORT.md) | **现在在哪**：门 G1（8 个 doctor golden 全绿）的判据与证据 |
+| 0.5 | [`docs/M0-COMPLETION.md`](docs/M0-COMPLETION.md) | 门 G0 的判据、证据、以及还没做到的那一条 |
 | 1 | [`docs/PORTING-NOTES.md`](docs/PORTING-NOTES.md) | **必读**。九条用真机调试换来的结论，漏一条就会重踩 |
 | 2 | [`docs/MIGRATION-ROADMAP.md`](docs/MIGRATION-ROADMAP.md) | **路线图**：5 个里程碑、门 G0–G5、11 周排期、卡住了怎么办 |
 | 3 | [`docs/MIGRATION-RUST.md`](docs/MIGRATION-RUST.md) | 施工图：crate 布局、每阶段验收、八个风险 |
@@ -32,7 +33,7 @@ O824 内核的 Rust 实现。**Go 版（`D:\dsh work\Object 824`，tag `v0-go-re
 ## 目录
 
 ```
-crates/          workspace（18 个 crate，见 docs/M0-COMPLETION.md 的说明）
+crates/          workspace（19 个 crate，见 docs/M1-REPORT.md 的说明）
 spec/            golden + transcripts（跨实现契约，从 Go 仓库复制）
 docs/            设计、迁移方案、移植笔记、第一周规格、M0 报告
 lab/             真机实验室脚本（PowerShell，与语言无关，可直接复用）
