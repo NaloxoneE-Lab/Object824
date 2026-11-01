@@ -169,6 +169,45 @@ pub fn assert_golden(expected: &str, actual: &str, label: &str) {
     }
 }
 
+/// The environment variable that rewrites a golden file from the current
+/// output, mirroring the reference implementation's `-update` flag.
+pub const UPDATE_GOLDEN_ENV: &str = "O824_UPDATE_GOLDEN";
+
+/// True when the run asked to regenerate golden files.
+pub fn update_requested() -> bool {
+    match std::env::var(UPDATE_GOLDEN_ENV) {
+        Ok(value) => value == "1" || value.eq_ignore_ascii_case("true"),
+        Err(_) => false,
+    }
+}
+
+/// Asserts that `actual` matches the contract stored at `path`.
+///
+/// With `O824_UPDATE_GOLDEN=1` it overwrites the file instead. **Regenerating is
+/// only allowed for a deliberate contract change**: otherwise it just freezes a
+/// regression as the new expectation, and the commit message has to say which
+/// contract moved.
+///
+/// # Panics
+///
+/// Panics with a unified diff when the documents differ and no update was
+/// requested.
+pub fn assert_golden_file(path: &Path, actual: &str, label: &str) {
+    assert_golden_file_with(path, actual, label, update_requested());
+}
+
+/// `assert_golden_file` with the update decision passed in explicitly, so the
+/// behaviour is testable without mutating the process environment.
+pub fn assert_golden_file_with(path: &Path, actual: &str, label: &str, update: bool) {
+    if update {
+        std::fs::write(path, actual)
+            .unwrap_or_else(|error| panic!("cannot update {}: {error}", path.display()));
+        eprintln!("updated golden file {}", path.display());
+        return;
+    }
+    assert_golden(&load(path), actual, label);
+}
+
 /// Renders a unified diff between the expected and the actual document.
 pub fn diff_report(expected: &str, actual: &str, label: &str) -> String {
     use similar::{ChangeTag, TextDiff};
@@ -496,5 +535,26 @@ tempfile.workspace = true
             .iter()
             .any(|edge| edge.crate_name == "o824-verify"));
         assert!(violations.iter().any(|edge| edge.crate_name == "o824-errs"));
+    }
+
+    #[test]
+    fn a_golden_file_is_only_rewritten_when_asked() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("sample.doctor.json");
+        std::fs::write(&path, "a\n").expect("write");
+
+        // A match passes and must not touch the file.
+        assert_golden_file_with(&path, "a\n", "match", false);
+        assert_eq!(load(&path), "a\n");
+
+        // Only the explicit update path rewrites the contract.
+        assert_golden_file_with(&path, "b\n", "update", true);
+        assert_eq!(load(&path), "b\n");
+
+        // Without the flag the same difference is a failure, not a silent fix.
+        let result =
+            std::panic::catch_unwind(|| assert_golden_file_with(&path, "c\n", "diff", false));
+        assert!(result.is_err(), "a mismatch must not be written silently");
+        assert_eq!(load(&path), "b\n");
     }
 }

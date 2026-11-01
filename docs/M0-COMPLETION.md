@@ -45,7 +45,8 @@ spike 代码留在 `spikes/yaml-spike/`（独立 workspace，`exclude` 出主图
 - 16 个文件都能解析成 `serde_json::Value`，并断言 key 顺序（`envelope/findings`、`id/…/fingerprint`）；
 - 归一化按规格替换 `<ROOT>` / `<DATA>` / `<PLAN_ID>` / `<INSTALL_ID>` / `<TIMESTAMP>`，路径的**原生、JSON 转义、正斜杠**三种写法都覆盖；
 - 失败时打印**带上下文行的 unified diff**，不是一句 "mismatch"；
-- 有一条**故意改坏 `severity` 必须失败**的测试，断言 diff 里同时出现 `- "severity": "error",` 与 `+ "severity": "info",`。
+- 有一条**故意改坏 `severity` 必须失败**的测试，断言 diff 里同时出现 `- "severity": "error",` 与 `+ "severity": "info",`；
+- 重生成开关 `O824_UPDATE_GOLDEN=1` 已实现（`assert_golden_file`），并且有测试钉住"只在明确要求时才改写契约文件，否则差异必须失败"。
 
 一个在写 harness 时才发现的契约事实：**8 个 `doctor` golden 里一个绝对路径都没有**（finding 的 `params.path` 是 profile 相对路径），只有 8 个 `plan` golden 需要归一化。测试把这一点钉成 `with_placeholders == 8`。
 
@@ -79,7 +80,6 @@ spike 代码留在 `spikes/yaml-spike/`（独立 workspace，`exclude` 出主图
 2. `cargo test` 的 50 个用例里，`verify`/`plan`/`apply`/`protocol`/`mock`/`diagnose`/`execx`/`lock`/`state` 还是空壳，只有 `MILESTONE` 常量。
 3. `discovery` 只实现了 `validate` / asar 版本 / home 解析 / profile 列举；注册表扫描、固定卷枚举、realpath 去重（M1）。
 4. `cli` 只有 `--version` / `--help` 与退出码映射；六子命令在 M3。
-5. `golden` 的 `UPDATE_GOLDEN=1` 重生成开关还没做（规格建议、非 G0 判据）。
 
 ## 下一步
 
