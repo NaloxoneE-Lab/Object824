@@ -6,6 +6,8 @@ O824 内核的 Rust 实现。**Go 版（`D:\dsh work\Object 824`，tag `v0-go-re
 
 一个 Windows 命令行内核：发现本机的 DeepSeek Harness 安装、诊断它为什么起不来、在改动任何文件之前自动快照、修不好可以回滚。它对 UI 说 JSON-RPC（stdio），对人类说英文兜底文案 + 错误码，人话由 UI 渲染。
 
+> **如果你是被派来接手这个重构的 agent**：先读工作区根的 `..\HANDOFF.md`（`D:\dsh work\Object 824\HANDOFF.md`），它按顺序告诉你该读什么、第一步做什么、以及本机没有 Rust 工具链这件事。
+
 ## 先读什么
 
 | 顺序 | 文件 | 为什么 |
