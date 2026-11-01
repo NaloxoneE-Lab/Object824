@@ -187,23 +187,35 @@ name = "o824-apply"
 version = "0.1.0"
 dependencies = [
  "o824-errs",
- "o824-execx",
+ "o824-fixtures",
+ "o824-lock",
  "o824-model",
+ "o824-plan",
  "o824-snapshot",
+ "o824-verify",
+ "o824-yaml",
+ "serde",
+ "serde_json",
+ "sha2",
+ "windows",
 ]
 
 [[package]]
 name = "o824-cli"
 version = "0.1.0"
 dependencies = [
+ "o824-apply",
  "o824-discovery",
  "o824-errs",
  "o824-fixtures",
+ "o824-lock",
  "o824-model",
  "o824-plan",
+ "o824-snapshot",
  "o824-state",
  "o824-verify",
  "o824-version",
+ "serde",
  "serde_json",
  "sha2",
 ]

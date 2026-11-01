@@ -26,24 +26,35 @@ pub fn select(
         // A typo'd --root must fail instead of diagnosing nothing and exiting 0
         // with "no findings". The path is inspected, never created.
         require_root_dir(root)?;
-        let home = home.filter(|home| !home.is_empty()).unwrap_or(root);
+        // A caller may spell the root with `.` or `..` components (the lab does,
+        // because it reaches the workspace through its parent). The reference
+        // implementation cleans every path it joins, so the findings it reports
+        // never carry those components; cleaning here keeps the two
+        // implementations' idea of "where the tree is" identical.
+        let root = o824_model::path::clean(Path::new(root))
+            .display()
+            .to_string();
+        let home = home.filter(|home| !home.is_empty()).unwrap_or(&root);
+        let home = o824_model::path::clean(Path::new(home))
+            .display()
+            .to_string();
         // Profiles are enumerated from the home the same way discovery does, so a
         // tree whose only profile is web, tui, or headless is diagnosed too.
-        let profiles = o824_discovery::profile_names(Path::new(home));
+        let profiles = o824_discovery::profile_names(Path::new(&home));
         let install_id = match install_id.filter(|id| !id.is_empty()) {
             Some(id) => id.to_owned(),
             // A root names an installation even without an --install label, and
             // the plan builder refuses an installation with no id.
-            None => local_install_id(root),
+            None => local_install_id(&root),
         };
         return Ok(Install {
             install_id,
             kind: o824_discovery::KIND_DESKTOP.to_owned(),
-            root: root.to_owned(),
+            root: root.clone(),
             version: String::new(),
             profiles,
             health: String::new(),
-            home: home.to_owned(),
+            home,
         });
     }
 

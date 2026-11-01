@@ -100,10 +100,16 @@ pub struct Step {
     /// The step's arguments: approval keys, or the files a restore must heal.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub args: Vec<String>,
+    /// A note apply records about the step as it runs it — today, that a
+    /// pre-v11 `allowBuilds` sequence was migrated to the pnpm 11 map form. A
+    /// plan as built leaves it empty; the journal carries it after the run.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub detail: String,
 }
 
 impl Step {
-    fn new(kind: &str, path: impl Into<String>) -> Step {
+    /// Creates a step of one kind with no optional inputs.
+    pub fn new(kind: &str, path: impl Into<String>) -> Step {
         Step {
             kind: kind.to_owned(),
             path: path.into(),

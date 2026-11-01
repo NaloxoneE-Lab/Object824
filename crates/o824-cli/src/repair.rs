@@ -7,7 +7,7 @@
 //! repaired anything. Milestone M3 fills that in.
 
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use o824_errs::{Code, Error};
 use o824_model::{Envelope, Install};
@@ -114,7 +114,7 @@ pub fn run_with(
     // The journal lives under the data root, which O824_DATA_ROOT overrides
     // inside the state rule; repair has no data-root flag of its own.
     let envelope = o824_verify::doctor(&install, &data_root);
-    let plan = match o824_plan::build_with(
+    let mut plan = match o824_plan::build_with(
         &install,
         &envelope,
         o824_model::Timestamp::now(),
@@ -138,19 +138,101 @@ pub fn run_with(
         return EXIT_OK;
     }
 
+    if flags.flag("with-install") {
+        let error = Error::new(
+            Code::Unsupported,
+            "o824 repair: --with-install runs the host's own pnpm, which arrives with the              staged-install work; drop the flag and re-run the plan",
+        );
+        let _ = writeln!(stderr, "{error}");
+        return exit_code_of(Some(&error));
+    }
+
     if plan.steps.is_empty() {
         return nothing_to_do(stdout, stderr, &envelope, &plan, flags.flag("json"));
     }
 
-    // Execution lands with milestone M3. Saying so is better than printing a
-    // success line for a repair that did not run.
-    let error = Error::new(
-        Code::Unsupported,
-        "o824 repair: applying a plan arrives with milestone M3; run with --dry-run to \
-         see the plan this build would execute",
-    );
-    let _ = writeln!(stderr, "{error}");
-    exit_code_of(Some(&error))
+    if !flags.flag("yes") && !confirm(stdout, stderr) {
+        let error = Error::new(
+            Code::ConfirmationRequired,
+            "o824 repair: confirmation required; re-run with --yes to apply the plan",
+        );
+        let _ = writeln!(stderr, "{error}");
+        return exit_code_of(Some(&error));
+    }
+
+    let scope = Path::new(&plan.root).to_path_buf();
+    if let Err(error) = o824_apply::run(&data_root, &mut plan, &scope) {
+        let _ = writeln!(stderr, "{error}");
+        return exit_code_of(Some(&error));
+    }
+
+    // A step summary is not proof: re-diagnose the same installation before
+    // claiming success. A finding that survives — a manual repair, a plugin the
+    // manifest cannot aim, a stale snapshot — means problems remain, so the exit
+    // code is 1, not 0.
+    let after = o824_verify::doctor(&install, &data_root);
+
+    if flags.flag("json") {
+        let document = serde_json::json!({
+            "planId": plan.id,
+            "installId": plan.install_id,
+            "root": plan.root,
+            "applied": true,
+            "steps": plan.steps,
+            "findings": after.findings,
+        });
+        let code = write_document(stdout, stderr, &document);
+        if code != EXIT_OK {
+            return code;
+        }
+    } else {
+        let _ = writeln!(
+            stdout,
+            "applied {} step(s) from plan {}",
+            plan.steps.len(),
+            plan.id
+        );
+        for step in &plan.steps {
+            let _ = writeln!(stdout, "  {}  {}", step.kind, step.path);
+        }
+        if !after.findings.is_empty() {
+            let _ = writeln!(
+                stdout,
+                "problems remain after repair ({} finding(s)):",
+                after.findings.len()
+            );
+            for finding in &after.findings {
+                let _ = writeln!(stdout, "  {}", crate::render::format_finding(finding));
+            }
+        }
+    }
+
+    if after.findings.is_empty() {
+        EXIT_OK
+    } else {
+        EXIT_FINDINGS
+    }
+}
+
+/// Asks an interactive session to approve the plan.
+///
+/// A non-interactive session is refused: an unattended run must pass `--yes`, and
+/// a silent "yes" is exactly what the confirmation exists to prevent. The prompt
+/// goes to stderr, because stdout is the machine-readable channel.
+fn confirm(stdout: &mut dyn Write, stderr: &mut dyn Write) -> bool {
+    use std::io::IsTerminal;
+
+    let _ = stdout.flush();
+    if !std::io::stdin().is_terminal() {
+        return false;
+    }
+    let _ = write!(stderr, "Apply this plan? [y/N] ");
+    let _ = stderr.flush();
+    let mut line = String::new();
+    if std::io::stdin().read_line(&mut line).is_err() && line.is_empty() {
+        return false;
+    }
+    matches!(line.trim().to_lowercase().as_str(), "y" | "yes")
 }
 
 /// Reports a plan with no steps.
@@ -335,14 +417,40 @@ mod tests {
         );
     }
 
+    /// A non-interactive session must pass `--yes`: a silent "yes" is exactly
+    /// what the confirmation exists to prevent.
     #[test]
-    fn applying_a_plan_is_not_reachable_before_m3() {
+    fn applying_without_yes_is_refused_and_writes_nothing() {
         let fixture = o824_fixtures::build("git-dep").expect("fixture");
         let store = TempDir::new("o824-repair-").expect("store");
         let root = fixture.root().display().to_string();
+        let whitelist = fixture.profile_dir().join("pnpm-workspace.yaml");
+        let before = std::fs::read_to_string(&whitelist).expect("read");
+
         let (code, _, stderr) = run_capture(&["--root", &root, "--home", &root], store.path());
-        assert_eq!(code, crate::EXIT_INTERNAL);
-        assert!(stderr.contains("milestone M3"), "{stderr}");
+        assert_eq!(code, crate::EXIT_CONFIRMATION_REQUIRED);
+        assert!(stderr.contains("confirmation required"), "{stderr}");
+        assert_eq!(std::fs::read_to_string(&whitelist).expect("read"), before);
+    }
+
+    #[test]
+    fn applying_with_yes_repairs_the_tree() {
+        let fixture = o824_fixtures::build("git-dep").expect("fixture");
+        let store = TempDir::new("o824-repair-").expect("store");
+        let root = fixture.root().display().to_string();
+
+        let (code, stdout, stderr) =
+            run_capture(&["--root", &root, "--home", &root, "--yes"], store.path());
+        assert_eq!(code, 0, "{stderr}");
+        assert!(stdout.contains("applied 1 step(s)"), "{stdout}");
+
+        // The repair holds: a fresh diagnosis is clean.
+        let (code, stdout, _) = run_capture(
+            &["--root", &root, "--home", &root, "--dry-run"],
+            store.path(),
+        );
+        assert_eq!(code, 0);
+        assert!(stdout.contains("steps: none"), "{stdout}");
     }
 
     #[test]

@@ -148,29 +148,56 @@ pub fn strip_nt_namespace(path: &Path) -> PathBuf {
     PathBuf::from(value)
 }
 
-/// Computes `path` relative to `root`, or `None` when they do not share a
-/// prefix. Windows paths compare case-insensitively.
+/// Computes `path` relative to `root` the way the reference implementation's
+/// `filepath.Rel` does.
+///
+/// The result may climb out of `root`: a link whose target lives beside the DSH
+/// home is reported as `..\vendor\x`, not as an absolute path, because both
+/// spellings name the same directory and only one of them is machine-independent.
+/// `None` means the two paths share no volume and cannot be relative to each
+/// other.
 fn relative_to(root: &Path, path: &Path) -> Option<String> {
-    let root_text = root.display().to_string();
-    let path_text = path.display().to_string();
-    if root_text.is_empty() || path_text.is_empty() {
+    let root_parts: Vec<(String, String)> = components(root);
+    let path_parts: Vec<(String, String)> = components(path);
+    if root_parts.is_empty() || path_parts.is_empty() {
         return None;
     }
-    let root_lower = root_text.to_lowercase();
-    let path_lower = path_text.to_lowercase();
-    if !path_lower.starts_with(&root_lower) {
+
+    let mut common = 0;
+    while common < root_parts.len()
+        && common < path_parts.len()
+        && root_parts[common].0 == path_parts[common].0
+    {
+        common += 1;
+    }
+    // Different volumes share at most a separator, never a prefix.
+    if common == 0 {
         return None;
     }
-    let rest = &path_text[root_text.len()..];
-    if !rest.is_empty() && !rest.starts_with(['\\', '/']) {
-        // "C:\a" is not a prefix of "C:\ab".
-        return None;
+
+    let separator = std::path::MAIN_SEPARATOR.to_string();
+    let mut parts: Vec<String> = Vec::new();
+    for _ in common..root_parts.len() {
+        parts.push("..".to_owned());
     }
-    let rest = rest.trim_start_matches(['\\', '/']);
-    if rest.is_empty() {
+    for (_, original) in &path_parts[common..] {
+        parts.push(original.clone());
+    }
+    if parts.is_empty() {
         return Some(".".to_owned());
     }
-    Some(rest.replace('/', "\\"))
+    Some(parts.join(&separator))
+}
+
+/// The components of a path as `(lowercase, original)` pairs.
+fn components(path: &Path) -> Vec<(String, String)> {
+    path.components()
+        .map(|component| {
+            let original = component.as_os_str().to_string_lossy().into_owned();
+            let lowered = original.to_lowercase();
+            (lowered, original)
+        })
+        .collect()
 }
 
 /// One finding parameter key: the path a finding is about.
@@ -251,10 +278,12 @@ mod tests {
         );
         // Case-insensitive on Windows.
         assert_eq!(rel_path(root, Path::new("c:\\TMP\\root\\a")), "a");
-        // A sibling with a shared prefix is not inside the root.
+        // A sibling beside the root is reported by climbing out, not absolutely:
+        // that is what the reference implementation's `filepath.Rel` does, and
+        // only one of the two spellings is machine-independent.
         assert_eq!(
             rel_path(root, Path::new("C:\\tmp\\rooty\\a")),
-            "C:\\tmp\\rooty\\a"
+            "..\\rooty\\a"
         );
     }
 
