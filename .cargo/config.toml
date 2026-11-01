@@ -1,0 +1,12 @@
+# Development toolchain notes.
+#
+# This machine has no Visual Studio build tools, so the local toolchain is
+# x86_64-pc-windows-gnu (see scripts/env.sh). Link with the `rust-lld` that
+# ships inside the Rust toolchain itself: that needs no C compiler, no MinGW
+# installation, and — unlike MinGW's gcc — it does not fall over when the
+# checkout path contains a space (this one does).
+#
+# This section only applies to the GNU target. CI builds the MSVC host on
+# windows-latest, where it is ignored.
+[target.x86_64-pc-windows-gnu]
+linker = "rust-lld"

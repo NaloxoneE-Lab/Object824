@@ -1,0 +1,15 @@
+[package]
+name = "o824"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "One executable, several roles: the DeepSeek Harness launcher kernel."
+
+[[bin]]
+name = "o824"
+path = "src/main.rs"
+
+[dependencies]
+o824-cli.workspace = true

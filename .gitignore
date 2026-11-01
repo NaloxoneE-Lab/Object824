@@ -1,3 +1,11 @@
 /target/
 *.exe
 /.cache/
+
+# Self-contained Rust toolchain (rustup + cargo home). Machine-local and large:
+# never committed. See scripts/env.sh for how it is activated.
+/.toolchain/
+
+# The YAML spike is its own workspace; its build products are not the project's.
+/spikes/*/target/
+/spikes/*/Cargo.lock

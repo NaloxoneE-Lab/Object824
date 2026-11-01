@@ -1,0 +1,12 @@
+[package]
+name = "o824-errs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Stable kernel error codes and the error type that carries them."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

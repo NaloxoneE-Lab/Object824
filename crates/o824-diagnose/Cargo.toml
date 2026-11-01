@@ -1,0 +1,13 @@
+[package]
+name = "o824-diagnose"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "the zip diagnostic bundle with absolute paths redacted by default."
+
+[dependencies]
+o824-errs.workspace = true
+o824-model.workspace = true
+zip.workspace = true

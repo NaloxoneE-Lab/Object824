@@ -1,0 +1,55 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+# The YAML spike is a throw-away probe with its own dependency set; it must not
+# leak crates into the shipped workspace.
+exclude = ["spikes/yaml-spike"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "UNLICENSED"
+publish = false
+
+[workspace.dependencies]
+# `preserve_order` is not optional: Go's struct field order is part of the
+# golden contract, and serde_json's default BTreeMap would sort every key.
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+thiserror = "1"
+sha2 = "0.10"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+similar = "2"
+tempfile = "3"
+windows = { version = "0.58", features = [
+  "Win32_Foundation",
+  "Win32_Storage_FileSystem",
+  "Win32_System_IO",
+  "Win32_System_Registry",
+  "Win32_System_Threading",
+  "Win32_System_Diagnostics_Debug",
+] }
+
+o824-errs = { path = "crates/o824-errs" }
+o824-model = { path = "crates/o824-model" }
+o824-version = { path = "crates/o824-version" }
+o824-execx = { path = "crates/o824-execx" }
+o824-lock = { path = "crates/o824-lock" }
+o824-state = { path = "crates/o824-state" }
+o824-discovery = { path = "crates/o824-discovery" }
+o824-fixtures = { path = "crates/o824-fixtures" }
+o824-verify = { path = "crates/o824-verify" }
+o824-plan = { path = "crates/o824-plan" }
+o824-snapshot = { path = "crates/o824-snapshot" }
+o824-apply = { path = "crates/o824-apply" }
+o824-protocol = { path = "crates/o824-protocol" }
+o824-mock = { path = "crates/o824-mock" }
+o824-diagnose = { path = "crates/o824-diagnose" }
+o824-cli = { path = "crates/o824-cli" }
+o824-conformance = { path = "crates/o824-conformance" }
+
+[profile.release]
+strip = "symbols"
+lto = "thin"
+codegen-units = 1

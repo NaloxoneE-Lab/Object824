@@ -12,11 +12,12 @@ O824 内核的 Rust 实现。**Go 版（`D:\dsh work\Object 824`，tag `v0-go-re
 
 | 顺序 | 文件 | 为什么 |
 |---|---|---|
+| 0 | [`docs/M0-COMPLETION.md`](docs/M0-COMPLETION.md) | **现在在哪**：门 G0 的判据、证据、以及还没做到的那一条 |
 | 1 | [`docs/PORTING-NOTES.md`](docs/PORTING-NOTES.md) | **必读**。九条用真机调试换来的结论，漏一条就会重踩 |
 | 2 | [`docs/MIGRATION-ROADMAP.md`](docs/MIGRATION-ROADMAP.md) | **路线图**：5 个里程碑、门 G0–G5、11 周排期、卡住了怎么办 |
 | 3 | [`docs/MIGRATION-RUST.md`](docs/MIGRATION-RUST.md) | 施工图：crate 布局、每阶段验收、八个风险 |
 | 4 | [`docs/design/2026-10-28-dsh-launcher-design.md`](docs/design/2026-10-28-dsh-launcher-design.md) | 设计规范（唯一权威） |
-| 5 | [`docs/week1/`](docs/week1/) | 第一周的规格级材料 |
+| 5 | [`docs/week1/`](docs/week1/) | 第一周的规格级材料（含 YAML spike 结论） |
 
 ## 三条机器判据（移植算不算成功的唯一标准）
 
@@ -31,10 +32,12 @@ O824 内核的 Rust 实现。**Go 版（`D:\dsh work\Object 824`，tag `v0-go-re
 ## 目录
 
 ```
-crates/          workspace（16 个 crate，见 docs/MIGRATION-RUST.md）
+crates/          workspace（18 个 crate，见 docs/M0-COMPLETION.md 的说明）
 spec/            golden + transcripts（跨实现契约，从 Go 仓库复制）
-docs/            设计、迁移方案、移植笔记、第一周规格
+docs/            设计、迁移方案、移植笔记、第一周规格、M0 报告
 lab/             真机实验室脚本（PowerShell，与语言无关，可直接复用）
+scripts/         env.sh / env.ps1：激活仓库内自包含的 Rust 工具链
+spikes/          一次性选型实验（yaml-spike），独立 workspace，不进发布图
 ```
 
 ## 构建
@@ -45,6 +48,24 @@ cargo test --workspace
 ```
 
 目标产物：单个静态 `o824.exe`（Windows x64），无 CGO 等价物、不依赖外部 DLL。
+
+### 本机工具链（自包含，只装在 `o824-rs` 里）
+
+这台机器没有 Visual Studio 构建工具，所以本地工具链是 `x86_64-pc-windows-gnu`，而且**全部装在仓库内**：`rustup`、cargo home、以及编译缓存都在 `.toolchain/`（git-ignore）。激活：
+
+```powershell
+. .\scripts\env.ps1      # PowerShell
+```
+```bash
+source scripts/env.sh    # bash
+```
+
+脚本做四件事：设置 `CARGO_HOME` / `RUSTUP_HOME` 到 `.toolchain/`、把 `cargo` 加进 `PATH`、把 `TMP`/`TMPDIR` 指到仓库内（链接器写不了 `%TEMP%`）、打印 cargo 版本。
+
+链接用 Rust 工具链自带的 **`rust-lld`**（见 `.cargo/config.toml`），不需要 MinGW、不需要 C 编译器。这一点是必要的：MinGW 的 gcc 在**路径含空格**时会崩（本仓库路径是 `D:\dsh work\Object 824\...`），而 `rust-lld` 不会。
+
+CI（`.github/workflows/ci.yml`）跑的是 `windows-latest` 的 MSVC 宿主，与本地 GNU 宿主产物不同，但 `cargo test` 的语义一致。
+
 
 ## 与 Go 版的关系
 

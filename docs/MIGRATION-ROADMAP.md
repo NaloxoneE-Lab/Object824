@@ -142,19 +142,24 @@ C    golden fixtures 八棵树 ──  verify  snapshot  cli  mock ──  diagn
 
 | crate | 里程碑 | 状态 | 负责人 | 验收通过 |
 |---|---|---|---|---|
-| `errs` `model` `version` | M0 | ⬜ | | |
+| `errs` `model` `version` | M0 | ✅ | | G0 |
+| `conformance`（golden/依赖图） | M0 | ✅ | | G0 |
 | `execx` `lock` `state` | M1 | ⬜ | | |
-| `discovery` | M1 | ⬜ | | |
-| `fixtures` | M1 | ⬜ | | |
+| `discovery` | M1 | 🟡 `validate` + asar 版本 + home 解析已完成；注册表/卷扫描、realpath 去重待做 | | |
+| `fixtures` | M1 | 🟡 八棵树都能造（含 junction/symlink），等 `verify` 接上才算验收 | | |
 | `verify` | M1 | ⬜ | | G1 |
 | `plan` | M2 | ⬜ | | G2 |
 | `snapshot` | M2 | ⬜ | | |
 | `apply` | M3 | ⬜ | | G3 |
-| `cli` | M3 | ⬜ | | G3 |
+| `cli` | M3 | 🟡 退出码映射 + `--version`/`--help` 已钉住，六子命令待 M3 | | G3 |
 | `protocol` `mock` | M4 | ⬜ | | G4 |
 | `diagnose` | M5 | ⬜ | | G5 |
 
 状态只有三种：⬜ 未开始 / 🟡 进行中 / ✅ 门已过。**"写完了但门没过"不算 ✅。**
+
+> 表里少一行 `o824`（bin）——它永远只是把参数转给 `o824-cli`，没有自己的里程碑。
+> 另：`MIGRATION-RUST.md` 列了 16 个 crate，实际是 **18 个**：多了 `o824-version`（`week1/04` 要求）和 `o824-conformance`（`week1/03` 要求，只含测试）。这不是漂移，是两份文档的口径差，以仓库为准。
+
 
 ---
 

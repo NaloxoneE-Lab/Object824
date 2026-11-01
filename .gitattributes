@@ -1,0 +1,8 @@
+# Keep one line ending everywhere: LF.
+#
+# The repository is developed on Windows but `scripts/env.sh` is a real bash
+# script — a CRLF checkout would break it, and a mixed tree makes golden diffs
+# noisy. Rust sources, YAML and Markdown are all LF in the working tree.
+* text=auto eol=lf
+*.exe binary
+*.png binary

@@ -1,0 +1,14 @@
+[package]
+name = "yaml-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Its own workspace: the spike's dependencies must not leak into the shipped
+# workspace graph, and the spike is not part of the deliverable.
+[workspace]
+
+[dependencies]
+marked-yaml = "0.8"
+yaml-rust2 = "0.10"
+similar = "2"
