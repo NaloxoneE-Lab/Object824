@@ -9,6 +9,8 @@ description = "atomic state files and the per-user data-root rule."
 
 [dependencies]
 o824-errs.workspace = true
-o824-model.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+o824-fixtures.workspace = true

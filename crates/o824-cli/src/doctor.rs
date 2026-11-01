@@ -181,12 +181,23 @@ fn select_install(
         });
     }
 
-    if install_id.is_some() {
-        return Err(Error::new(
-            Code::Unsupported,
-            "o824 doctor: --install needs the machine scan, which arrives with milestone M3; \
-             pass --root <path> for now",
-        ));
+    if let Some(install_id) = install_id.filter(|id| !id.is_empty()) {
+        // Selecting by id reuses the machine scan; an explicit root never reaches
+        // this branch, because a root is inspected rather than discovered.
+        let installs = o824_discovery::discover(&o824_discovery::Options {
+            roots: None,
+            extra_dirs: Vec::new(),
+            home: home.map(str::to_owned),
+        })?;
+        return installs
+            .into_iter()
+            .find(|install| install.install_id == install_id)
+            .ok_or_else(|| {
+                Error::new(
+                    Code::Usage,
+                    format!("o824 doctor: no installation with id {install_id:?}"),
+                )
+            });
     }
 
     Err(Error::new(
@@ -273,9 +284,28 @@ mod tests {
             .contains("pass --install <id> or --root <path>"));
     }
 
+    /// Selecting by id scans the machine, so an id that names nothing is a usage
+    /// error rather than a silent empty diagnosis. The machine in the test may
+    /// have no installation at all, which also yields the usage error.
     #[test]
-    fn installing_by_id_is_not_reachable_before_the_machine_scan() {
-        let error = select_install(Some("i1"), None, None).expect_err("must fail");
-        assert_eq!(error.code, Code::Unsupported);
+    fn an_unknown_install_id_is_a_usage_error() {
+        let error =
+            select_install(Some("i-definitely-not-there"), None, None).expect_err("must fail");
+        assert_eq!(error.code, Code::Usage);
+        assert!(
+            error.fallback.contains("no installation with id"),
+            "{error}"
+        );
+    }
+
+    /// With an explicit root the id is a label, not a selector, so it never
+    /// reaches the machine scan.
+    #[test]
+    fn an_explicit_root_and_an_id_combine() {
+        let directory = o824_fixtures::TempDir::new("o824-doctor-").expect("temp dir");
+        let root = directory.path().display().to_string();
+        let install = select_install(Some("labelled"), Some(&root), None).expect("select");
+        assert_eq!(install.install_id, "labelled");
+        assert_eq!(install.root, root);
     }
 }

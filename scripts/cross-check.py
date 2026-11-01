@@ -65,6 +65,63 @@ def normalize(document, root):
     return text
 
 
+def machine_checks():
+    """Compare the two implementations against the real machine, not a fixture.
+
+    This is the half the in-repo tests cannot do: the fixture trees never exercise
+    the uninstall registry or the fixed-volume scan, and `--install` only works
+    when the machine really has an installation. On a machine with no DSH install
+    the check says so instead of failing.
+    """
+    print("\n== real machine ==")
+    failures = 0
+
+    go_code, go_json = run_simple(GO_BIN, ["discover", "--json"])
+    rs_code, rs_json = run_simple(RUST_BIN, ["discover", "--json"])
+    if go_code != rs_code or go_json != rs_json:
+        failures += 1
+        print("discover --json      FAIL")
+        print("  go   :", go_json[:400], f"(exit {go_code})")
+        print("  rust :", rs_json[:400], f"(exit {rs_code})")
+    else:
+        print("discover --json      PASS")
+
+    go_code, go_out = run_simple(GO_BIN, ["discover"])
+    rs_code, rs_out = run_simple(RUST_BIN, ["discover"])
+    if go_code != rs_code or go_out != rs_out:
+        failures += 1
+        print("discover (table)     FAIL")
+        print("  go   :", go_out[:600])
+        print("  rust :", rs_out[:600])
+    else:
+        print("discover (table)     PASS")
+
+    try:
+        installs = json.loads(go_json)
+    except ValueError:
+        installs = []
+    if not installs:
+        print("doctor --install     SKIP (no installation on this machine)")
+    else:
+        install_id = installs[0]["installId"]
+        go_code, go_out = run_simple(GO_BIN, ["doctor", "--install", install_id, "--json"])
+        rs_code, rs_out = run_simple(RUST_BIN, ["doctor", "--install", install_id, "--json"])
+        ok = go_code == rs_code and go_out == rs_out
+        failures += 0 if ok else 1
+        print(f"doctor --install {install_id:<3} {'PASS' if ok else 'FAIL'}")
+        if not ok:
+            print("  go   :", go_out[:400], f"(exit {go_code})")
+            print("  rust :", rs_out[:400], f"(exit {rs_code})")
+
+    return failures
+
+
+def run_simple(binary, args):
+    """Runs a command and returns its exit code and combined stdout."""
+    result = subprocess.run([str(binary), *args], capture_output=True, text=True)
+    return result.returncode, result.stdout
+
+
 def main():
     for required in (GO_BIN, RUST_BIN):
         if not required.is_file():
@@ -111,6 +168,9 @@ def main():
             print("  rserr:", rs_err[:300])
 
     print(f"\n{len(KINDS) - failures}/{len(KINDS)} kinds agree")
+
+    failures += machine_checks()
+
     return 0 if failures == 0 else 1
 
 

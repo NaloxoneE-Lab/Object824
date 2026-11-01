@@ -15,7 +15,19 @@
 //! while the DSH version lives in `package.json` inside the asar. The fixture
 //! trees keep the two deliberately different so this mistake cannot pass.
 
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
+
+// The machine scan is the one place that calls the Windows API directly: the
+// registry and the fixed-volume list have no standard-library equivalent. Every
+// call site is inside a `#[cfg(windows)]` block, the module keeps the raw
+// pointers to itself, and the rest of the crate stays `deny(unsafe_code)`.
+#[allow(unsafe_code)]
+pub mod machine;
+
+pub use machine::{
+    candidate_roots, dedupe_key, discover, fixed_volumes, parse_display_name_version,
+    registry_roots, sorted_unique_roots, standard_roots, volume_roots, Options, SourceRoot,
+};
 
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
@@ -115,8 +127,21 @@ pub fn profile_names(home: &Path) -> Vec<String> {
 /// Any missing part is `E_INSTALL_DIR`. The returned install has health `"ok"`
 /// and the default DSH home; its id is left empty for discovery to assign.
 pub fn validate(root: &Path) -> Result<Install, Error> {
-    let clean = clean_path(root);
     let home = resolve_home(None);
+    validate_with(root, &home, None)
+}
+
+/// [`validate`] with an explicit DSH home and a registry version hint.
+///
+/// The home decides which `profiles\` directory the install reports, and the
+/// hint is the version parsed from an uninstall entry — discovery passes it
+/// between the asar and the `<root>\version` file.
+pub fn validate_with(
+    root: &Path,
+    home: &Path,
+    registry_version: Option<&str>,
+) -> Result<Install, Error> {
+    let clean = clean_path(root);
     let exe = clean.join(EXE_NAME);
     let asar = clean.join("resources").join("app.asar");
 
@@ -127,7 +152,7 @@ pub fn validate(root: &Path) -> Result<Install, Error> {
     if !is_regular_file(&asar) {
         missing.push(ASAR_REL_PATH.to_owned());
     }
-    let version = read_version(&clean, None);
+    let version = read_version(&clean, registry_version);
     if version.is_empty() {
         missing.push(VERSION_FILE_NAME.to_owned());
     }
@@ -149,7 +174,7 @@ pub fn validate(root: &Path) -> Result<Install, Error> {
         kind: KIND_DESKTOP.to_owned(),
         root: clean.display().to_string(),
         version,
-        profiles: profile_names(&home),
+        profiles: profile_names(home),
         health: HEALTH_OK.to_owned(),
         home: home.display().to_string(),
     })

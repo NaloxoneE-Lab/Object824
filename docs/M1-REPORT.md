@@ -85,13 +85,56 @@ python scripts/cross-check.py
 
 为了让测试能指定 data root（进程级环境变量在并行测试里会打架），`doctor::run_with(..., data_root)` 是给测试用的入口，`doctor::run` 走环境变量。
 
-## 未完成（不阻塞 G1，但属于 M1 清单）
+## M1 的后半段：机器层
 
-1. **`execx` / `lock`** 仍是空壳。G1 用不到它们（doctor 只读、不加锁），但 M1 的清单里有，且 M3 的 `apply` 依赖。
-2. **`discovery` 的机器扫描**（注册表 + 固定卷 + realpath 去重）没做，只有 `validate` / asar 版本 / home 解析 / profile 列举。所以 `o824 doctor --install <id>` 现在返回 `E_UNSUPPORTED`（退出码 8）并提示改用 `--root`；`o824 discover` 子命令还不存在。
-3. **`state`** 只有 `data_root`，state.json 的读写留到 M3。
-4. CI 仍未在 GitHub 上跑过（仓库还没有远端）。
+上面是门 G1 的部分。G1 过完之后补齐了 M1 清单里剩下的四个 crate，以及让它们能被验证的 `discover` 子命令。
+
+### `o824-execx`：唯一的子进程出口
+
+只要 `program + argv`，不要命令字符串：路径里有空格、引号、非 ASCII 都原样交给子进程。**非零退出是数据不是错误**（`code` 有值、`error` 为 `None`），stdout/stderr 分两个缓冲返回，不合并。子进程用 `CREATE_NO_WINDOW` 启动，GUI 进程里不会闪黑框。
+
+测试里用**测试二进制自己**当子进程，这一条同时验证了"程序路径含空格"（本仓库路径就有）和"参数含空格与非 ASCII"（`--skip "no such test 测试"` 若被拆开，harness 会以非零退出）。
+
+### `o824-lock`：跨进程独占锁
+
+`File::try_lock`（标准库，1.89 起稳定）→ `Err(WouldBlock)` 时返回 `E_BUSY`，并带上 `Params["pid"]` 指向持锁进程。pid 写在 `o824.lock.pid` 旁边（锁文件本身被持有期间读不了）。
+
+有一条**两进程测试**：父测试起一个子进程（同一个测试二进制，`--exact tests::lock_holder_child`）持锁并打一行 `locked`，父进程读到之后自己 `acquire`，断言 `E_BUSY` 且 `pid` 等于子进程 pid。
+
+> **与 Go 的一处差异（已记录在 crate 文档里）**：Go 用 `CreateFileW` 的 share mode 0，连"同一进程第二次打开"都拒绝；`LockFileEx` 只拒绝另一个进程的锁。跨进程语义一致（契约要的就是这个），差别只出现在同一进程同时取两次锁——内核不会这么做。换来的是零 `unsafe`、不引 `windows` API。
+
+### `o824-state`：原子状态文件
+
+`data_root` 的规则与 Go 一致（`O824_DATA_ROOT` → `%LOCALAPPDATA%\o824` → `<home>\o824`），state.json 的写入走"同目录临时文件 → `sync_all` → `fs::rename` 覆盖"。读的时候把 Go 写的 `"installs": null` 当空表（Go 的 nil map 值），坏 JSON 报 `E_STATE_DRIFT` 而不是静默当空。
+
+### `o824-discovery`：机器扫描
+
+补上注册表（HKCU → HKLM → WOW6432Node，`DisplayName` 以 `DeepSeek Harness` 开头就算）、固定卷（`GetLogicalDrives` + `GetDriveTypeW`）、realpath 去重、排序后编号 `i1…iN`。
+
+这是**整个工作区第二次使用 `unsafe`**（第一次是 `o824-yaml` 的 libyaml 包装），而且是紧挨着 Windows API 的 `#[cfg(windows)]` 块；crate 从 `#![forbid(unsafe_code)]` 改成 `#![deny(unsafe_code)]`，只给 `machine` 模块 `#[allow(unsafe_code)]`。`windows` crate 用的是 0.58——它的 `windows-targets` 还带预编译 import lib，不会像 `windows-sys` 0.61 那样要 `dlltool`。
+
+### `o824 discover`（顺带，因为验收要用）
+
+`discover [--json] [--root] [--home] [--install]`，行为与 Go 逐字一致，连表格的列宽（每列最宽 + 2 空格）都一样。
+
+**真机结果**（本机）：
+
+```
+$ o824 discover
+id  kind     version     root                                                         health
+i1  desktop  0.2.1-rc.3  D:\Users\X_Cyanogen\AppData\Local\Programs\DeepSeek Harness  ok
+```
+
+`discover --json`、`discover`（表格）、`doctor --install i1 --json` 三者与 Go **逐字节相同**，`doctor --install nope` 的报错文本与退出码 2 也相同。这些都进了 `scripts/cross-check.py` 的 "real machine" 段。
+
+## 仍然未完成
+
+1. **CI 仍未在 GitHub 上跑过**（仓库还没有远端）。这是唯一一条从 M0 悬到现在的 G0 判据。
+2. `MIGRATION-RUST.md` 要求的 `discovery` 验收是"`discover --json` 对真机输出与 Go 版相同"——这条**已经满足并被脚本钉住**；但它只在有真安装的机器上能跑，CI 上会 SKIP。
+3. MSRV 从 1.80 提到 **1.89**（`File::try_lock`）。`week1/01` 的示例片段里写的是 1.80，以仓库为准。
 
 ## 下一步
 
-按路线图，M1 剩下的两块是 `execx`/`lock`/`state` 与 `discovery` 的机器扫描；之后进 M2 的 `plan`。**G1 已过，所以"`verify` 的语义被完整复现"这句话现在是有机器判据的**——这才是能开始 `plan` 的前提。
+M1 做完了。按路线图进 **M2**：`plan`（纯函数、15 分钟有效期、指纹、步骤映射）与 `snapshot`（create/list/restore、保留 5 份、sha256 校验）。门 G2 是 8 个 `.plan.json` 全绿。
+
+**G1 已过**，所以"`verify` 的语义被完整复现"这句话现在是有机器判据的——这才是能开始 `plan` 的前提。

@@ -58,6 +58,25 @@ pub mod path {
             cleaned
         }
     }
+
+    /// Turns a path Windows reports in the object namespace back into the Win32
+    /// spelling, so it can be compared with an installation root.
+    ///
+    /// `\??\Global\` is how a secondary volume's drive letter appears inside the
+    /// object namespace; the junction still resolves exactly like `\??\D:\`, but
+    /// leaving the prefix in place makes a reported path opaque.
+    pub fn strip_nt_namespace(path: &Path) -> PathBuf {
+        let mut value = path.display().to_string();
+        for prefix in ["\\\\?\\", "\\??\\"] {
+            if let Some(rest) = value.strip_prefix(prefix) {
+                value = rest.to_owned();
+            }
+        }
+        if let Some(rest) = value.strip_prefix("Global\\") {
+            value = rest.to_owned();
+        }
+        PathBuf::from(value)
+    }
 }
 
 /// A finding's severity level.

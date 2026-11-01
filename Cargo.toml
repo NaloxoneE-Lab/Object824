@@ -8,7 +8,10 @@ exclude = ["spikes/yaml-spike"]
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.80"
+# 1.89 is where `File::try_lock` and `File::unlock` became stable, which is what the
+# kernel lock uses instead of a CreateFileW share mode. CI tracks stable, so this
+# only bounds what a developer may compile the workspace with.
+rust-version = "1.89"
 license = "UNLICENSED"
 publish = false
 

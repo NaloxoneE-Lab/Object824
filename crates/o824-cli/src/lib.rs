@@ -11,6 +11,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod discover;
 pub mod doctor;
 pub mod flags;
 pub mod render;
@@ -78,11 +79,12 @@ pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i
             let _ = stdout.write_all(usage().as_bytes());
             EXIT_OK
         }
+        "discover" => discover::run(&args[1..], stdout, stderr),
         "doctor" => doctor::run(&args[1..], stdout, stderr),
         other => {
             let _ = writeln!(
                 stderr,
-                "o824: unknown command {other:?} (available in this build: doctor)"
+                "o824: unknown command {other:?} (available in this build: discover, doctor)"
             );
             EXIT_USAGE
         }

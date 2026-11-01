@@ -9,3 +9,6 @@ description = "argv-form child processes with no shell in the way."
 
 [dependencies]
 o824-errs.workspace = true
+
+[dev-dependencies]
+o824-fixtures.workspace = true

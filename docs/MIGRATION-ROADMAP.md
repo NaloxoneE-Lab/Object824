@@ -145,15 +145,15 @@ C    golden fixtures 八棵树 ──  verify  snapshot  cli  mock ──  diagn
 | `errs` `model` `version` | M0 | ✅ | | G0 |
 | `conformance`（golden/依赖图） | M0 | ✅ | | G0 |
 | `yaml`（libyaml 包装，见 `M1-REPORT.md`） | M1 | ✅ | | G1 |
-| `execx` `lock` | M1 | ⬜ | | |
-| `state` | M1 | 🟡 只有 `data_root`；state.json 读写留到 M3 | | |
-| `discovery` | M1 | 🟡 `validate` + asar 版本 + home 解析已完成；注册表/卷扫描、realpath 去重待做 | | |
+| `execx` `lock` | M1 | ✅ 跨进程锁有两进程测试 | | |
+| `state` | M1 | ✅ data root + 原子 state.json | | |
+| `discovery` | M1 | ✅ 注册表 + 固定卷 + realpath 去重；真机 `discover` 与 Go 逐字节相同 | | |
 | `fixtures` | M1 | ✅ 八棵树 + junction/symlink，已被 Go oracle 交叉验证 | | G1 |
 | `verify` | M1 | ✅ 七个检查 | | **G1** |
 | `plan` | M2 | ⬜ | | G2 |
 | `snapshot` | M2 | ⬜ | | |
 | `apply` | M3 | ⬜ | | G3 |
-| `cli` | M3 | 🟡 退出码 + `doctor` 已实现并与 Go 逐字相同；其余子命令待 M3 | | G3 |
+| `cli` | M3 | 🟡 退出码 + `doctor` + `discover` 已实现并与 Go 逐字相同；其余子命令待 M3 | | G3 |
 | `protocol` `mock` | M4 | ⬜ | | G4 |
 | `diagnose` | M5 | ⬜ | | G5 |
 
