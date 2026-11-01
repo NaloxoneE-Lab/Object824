@@ -11,9 +11,10 @@ O824 内核的 Rust 实现。**Go 版（`D:\dsh work\Object 824`，tag `v0-go-re
 | 顺序 | 文件 | 为什么 |
 |---|---|---|
 | 1 | [`docs/PORTING-NOTES.md`](docs/PORTING-NOTES.md) | **必读**。九条用真机调试换来的结论，漏一条就会重踩 |
-| 2 | [`docs/MIGRATION-RUST.md`](docs/MIGRATION-RUST.md) | 施工图：crate 布局、11 个阶段、每阶段验收、八个风险 |
-| 3 | [`docs/design/2026-10-28-dsh-launcher-design.md`](docs/design/2026-10-28-dsh-launcher-design.md) | 设计规范（唯一权威） |
-| 4 | [`docs/week1/`](docs/week1/) | 第一周的规格级材料 |
+| 2 | [`docs/MIGRATION-ROADMAP.md`](docs/MIGRATION-ROADMAP.md) | **路线图**：5 个里程碑、门 G0–G5、11 周排期、卡住了怎么办 |
+| 3 | [`docs/MIGRATION-RUST.md`](docs/MIGRATION-RUST.md) | 施工图：crate 布局、每阶段验收、八个风险 |
+| 4 | [`docs/design/2026-10-28-dsh-launcher-design.md`](docs/design/2026-10-28-dsh-launcher-design.md) | 设计规范（唯一权威） |
+| 5 | [`docs/week1/`](docs/week1/) | 第一周的规格级材料 |
 
 ## 三条机器判据（移植算不算成功的唯一标准）
 
