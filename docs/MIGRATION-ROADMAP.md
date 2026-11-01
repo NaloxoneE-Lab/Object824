@@ -155,9 +155,13 @@ C    golden fixtures 八棵树 ──  verify  snapshot  cli  mock ──  diagn
 | `apply` | M3 | ✅ 原生 junction、行级白名单、快照回滚、journal；`--with-install` 明确拒绝 | | **G3** |
 | `cli` | M3 | ✅ `discover`/`doctor`/`repair`/`snapshot`/`rollback`，退出码 0–8，与 Go 逐字相同 | | **G3** |
 | `protocol` `mock` | M4 | ✅ 帧编解码 + transcript 回放，3 个录制逐帧一致 | | **G4** |
-| `diagnose` | M5 | ⬜ 下一个 | | G5 |
+| `diagnose` | M5 | ✅ zip + 默认脱敏，真机验证无绝对路径残留 | | **G5** |
 
 状态只有三种：⬜ 未开始 / 🟡 进行中 / ✅ 门已过。**"写完了但门没过"不算 ✅。**
+
+> **2026-11-02：G0–G5 全部通过。** 18+1 个 crate 里只剩 `--with-install`（副本安装）没有实现，
+> 它明确返回 `E_UNSUPPORTED`。迁移完成定义里的第 5 条（CI 真在 GitHub 上跑过）仍未满足：
+> 仓库没有远端。详见 `M5-REPORT.md`。
 
 > 表里少一行 `o824`（bin）——它永远只是把参数转给 `o824-cli`，没有自己的里程碑。
 > 另：`MIGRATION-RUST.md` 列了 16 个 crate，实际是 **19 个**：多了 `o824-version`（`week1/04`）、`o824-conformance`（`week1/03`，只含测试）和 `o824-yaml`（M1 加的，理由见 `M1-REPORT.md`）。这不是漂移，是两份文档的口径差，以仓库为准。

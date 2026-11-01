@@ -9,6 +9,7 @@ description = "subcommand parsing, exit codes, and human-facing rendering."
 
 [dependencies]
 o824-apply.workspace = true
+o824-diagnose.workspace = true
 o824-discovery.workspace = true
 o824-errs.workspace = true
 o824-model.workspace = true

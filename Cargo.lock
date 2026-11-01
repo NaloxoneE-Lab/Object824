@@ -205,6 +205,7 @@ name = "o824-cli"
 version = "0.1.0"
 dependencies = [
  "o824-apply",
+ "o824-diagnose",
  "o824-discovery",
  "o824-errs",
  "o824-fixtures",
@@ -242,7 +243,14 @@ name = "o824-diagnose"
 version = "0.1.0"
 dependencies = [
  "o824-errs",
+ "o824-fixtures",
  "o824-model",
+ "o824-state",
+ "o824-verify",
+ "o824-version",
+ "serde",
+ "serde_json",
+ "windows",
  "zip",
 ]
 

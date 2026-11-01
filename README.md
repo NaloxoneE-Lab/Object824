@@ -12,7 +12,8 @@ O824 内核的 Rust 实现。**Go 版（`D:\dsh work\Object 824`，tag `v0-go-re
 
 | 顺序 | 文件 | 为什么 |
 |---|---|---|
-| 0 | [`docs/M4-REPORT.md`](docs/M4-REPORT.md) | **现在在哪**：门 G4（3 个 transcript 逐帧通过） |
+| 0 | [`docs/M5-REPORT.md`](docs/M5-REPORT.md) | **现在在哪**：门 G5，以及迁移完成定义逐条对照 |
+| 0.1 | [`docs/M4-REPORT.md`](docs/M4-REPORT.md) | 门 G4（3 个 transcript 逐帧通过） |
 | 0.1 | [`docs/M3-REPORT.md`](docs/M3-REPORT.md) | 门 G3（实验室六场景 + CLI 收口） |
 | 0.2 | [`docs/M2-REPORT.md`](docs/M2-REPORT.md) | 门 G2（8 个 plan golden 全绿，含确定性） |
 | 0.2 | [`docs/M1-REPORT.md`](docs/M1-REPORT.md) | 门 G1 的判据与证据 |

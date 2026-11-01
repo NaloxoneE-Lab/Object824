@@ -11,6 +11,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod diagnose_cmd;
 pub mod discover;
 pub mod doctor;
 pub mod flags;
@@ -90,10 +91,11 @@ pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i
         "rollback" => rollback::run(&args[1..], stdout, stderr),
         "snapshot" => snapshot_cmd::run(&args[1..], stdout, stderr),
         "mock" => mock_cmd::run(&args[1..], stdout, stderr),
+        "diagnose" => diagnose_cmd::run(&args[1..], stdout, stderr),
         other => {
             let _ = writeln!(
                 stderr,
-                "o824: unknown command {other:?} (available in this build: discover, doctor, mock, repair, rollback, snapshot)"
+                "o824: unknown command {other:?} (available in this build: diagnose, discover, doctor, mock, repair, rollback, snapshot)"
             );
             EXIT_USAGE
         }
@@ -106,18 +108,18 @@ pub fn usage() -> String {
     text.push_str("o824 — the DeepSeek Harness launcher kernel\n\n");
     text.push_str("usage: o824 <command> [flags]\n\n");
     text.push_str("commands:\n");
-    text.push_str("  doctor     diagnose one installation\n");
-    text.push('\n');
-    text.push_str("commands (milestone M3):\n");
     text.push_str("  discover   list installations on this machine\n");
+    text.push_str("  doctor     diagnose one installation\n");
     text.push_str("  repair     plan or apply a repair\n");
-    text.push_str("  snapshot   list, create, or restore snapshots\n");
+    text.push_str("  snapshot   create or list settings snapshots\n");
+    text.push_str("  rollback   restore an installation from a snapshot\n");
     text.push_str("  diagnose   write a redacted diagnostic bundle\n");
-    text.push_str("  mock       replay a protocol transcript\n");
+    text.push_str("  mock       replay a recorded protocol session\n");
     text.push('\n');
     text.push_str("flags:\n");
     text.push_str("  --version  print the build identity\n");
     text.push_str("  --help     print this text\n");
+    text.push_str("\nEvery command takes --help for its own flags.\n");
     text
 }
 

@@ -10,4 +10,13 @@ description = "the zip diagnostic bundle with absolute paths redacted by default
 [dependencies]
 o824-errs.workspace = true
 o824-model.workspace = true
+o824-state.workspace = true
+o824-verify.workspace = true
+o824-version.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 zip.workspace = true
+windows.workspace = true
+
+[dev-dependencies]
+o824-fixtures.workspace = true

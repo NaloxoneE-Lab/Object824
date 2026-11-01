@@ -182,7 +182,10 @@ pub fn run_with(
     }
 
     let mut restore_error: Option<Error> = None;
-    let restored = o824_snapshot::restore(&data_root, &snapshot, Path::new(&install.root));
+    // A snapshot covers the DSH home, not the application root: restoring into the
+    // application directory would write profiles\ where they do not belong.
+    let scope = scope_of(&install);
+    let restored = o824_snapshot::restore(&data_root, &snapshot, &scope);
     match &restored {
         Ok(()) => {
             entry.state = o824_apply::journal::State::Done;
