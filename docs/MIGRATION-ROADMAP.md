@@ -154,8 +154,8 @@ C    golden fixtures 八棵树 ──  verify  snapshot  cli  mock ──  diagn
 | `snapshot` | M2 | ✅ create/create_if_changed/list/restore，保留 5 份 | | |
 | `apply` | M3 | ✅ 原生 junction、行级白名单、快照回滚、journal；`--with-install` 明确拒绝 | | **G3** |
 | `cli` | M3 | ✅ `discover`/`doctor`/`repair`/`snapshot`/`rollback`，退出码 0–8，与 Go 逐字相同 | | **G3** |
-| `protocol` `mock` | M4 | ⬜ 下一个 | | G4 |
-| `diagnose` | M5 | ⬜ | | G5 |
+| `protocol` `mock` | M4 | ✅ 帧编解码 + transcript 回放，3 个录制逐帧一致 | | **G4** |
+| `diagnose` | M5 | ⬜ 下一个 | | G5 |
 
 状态只有三种：⬜ 未开始 / 🟡 进行中 / ✅ 门已过。**"写完了但门没过"不算 ✅。**
 

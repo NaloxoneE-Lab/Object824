@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "LSP framing, JSON-RPC, asynchronous jobs, and the discovery cache."
+description = "LSP framing, JSON-RPC envelopes, and the sequence counter."
 
 [dependencies]
 o824-errs.workspace = true

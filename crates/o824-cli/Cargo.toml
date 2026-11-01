@@ -14,6 +14,7 @@ o824-errs.workspace = true
 o824-model.workspace = true
 o824-snapshot.workspace = true
 o824-lock.workspace = true
+o824-mock.workspace = true
 o824-plan.workspace = true
 o824-state.workspace = true
 o824-verify.workspace = true

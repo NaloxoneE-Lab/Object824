@@ -135,6 +135,53 @@ def run_json(binary, args, data_root):
         return None
 
 
+def transcript_checks():
+    """Drive both mocks with each transcript's own requests and compare frames.
+
+    This is the gate G4 check that needs no kernel: the client side is the
+    recording's own requests, and the expected server side is the recording.
+    """
+    print("\n== transcripts ==")
+    failures = 0
+    for path in sorted((RS / "spec" / "transcripts").glob("*.jsonl")):
+        lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
+                 if line.strip()]
+        requests = [line for line in lines if "method" in line and "id" in line]
+        recorded = [line for line in lines if not ("method" in line and "id" in line)]
+
+        def frame(document):
+            body = json.dumps(document, separators=(",", ":")).encode("utf-8")
+            return b"Content-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body
+
+        def drive(binary):
+            payload = b"".join(frame(request) for request in requests)
+            result = subprocess.run(
+                [str(binary), "mock", "--transcript", str(path)],
+                input=payload, capture_output=True,
+            )
+            if result.returncode != 0:
+                return None
+            frames, position = [], 0
+            while position < len(result.stdout):
+                head, _, rest = result.stdout[position:].partition(b"\r\n\r\n")
+                header = head.decode("ascii", "replace")
+                length = int(header.split(":", 1)[1].strip())
+                frames.append(json.loads(rest[:length]))
+                position += len(head) + 4 + length
+            return frames
+
+        go = drive(GO_BIN)
+        rust = drive(RUST_BIN)
+        ok = go == recorded and rust == recorded and go == rust
+        failures += 0 if ok else 1
+        print(f"{path.name:24}", "PASS" if ok else "FAIL")
+        if not ok:
+            print("  go    :", json.dumps(go)[:500] if go else "no output")
+            print("  rust  :", json.dumps(rust)[:500] if rust else "no output")
+            print("  record:", json.dumps(recorded)[:500])
+    return failures
+
+
 def machine_checks():
     """Compare the two implementations against the real machine, not a fixture.
 
@@ -240,6 +287,7 @@ def main():
     print(f"\n{len(KINDS) - failures}/{len(KINDS)} doctor kinds agree")
 
     failures += plan_checks()
+    failures += transcript_checks()
     failures += machine_checks()
 
     return 0 if failures == 0 else 1

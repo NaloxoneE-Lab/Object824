@@ -209,6 +209,7 @@ dependencies = [
  "o824-errs",
  "o824-fixtures",
  "o824-lock",
+ "o824-mock",
  "o824-model",
  "o824-plan",
  "o824-snapshot",
@@ -228,8 +229,10 @@ dependencies = [
  "o824-discovery",
  "o824-errs",
  "o824-fixtures",
+ "o824-mock",
  "o824-model",
  "o824-plan",
+ "o824-protocol",
  "serde_json",
  "similar",
 ]
@@ -292,8 +295,10 @@ name = "o824-mock"
 version = "0.1.0"
 dependencies = [
  "o824-errs",
+ "o824-fixtures",
  "o824-model",
  "o824-protocol",
+ "serde",
  "serde_json",
 ]
 

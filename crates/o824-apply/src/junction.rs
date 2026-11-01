@@ -177,13 +177,12 @@ mod tests {
         let substitute_len = u16::from_le_bytes(buffer[10..12].try_into().unwrap()) as usize;
         assert_eq!(substitute_len, (r"\??\D:\target".len()) * 2);
         let substitute_start = MOUNT_POINT_DATA_OFFSET;
-        let substitute: Vec<u16> =
-            buffer[substitute_start..substitute_start + substitute_len + 2]
-                .as_chunks::<2>()
-                .0
-                .iter()
-                .map(|pair| u16::from_le_bytes(*pair))
-                .collect();
+        let substitute: Vec<u16> = buffer[substitute_start..substitute_start + substitute_len + 2]
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| u16::from_le_bytes(*pair))
+            .collect();
         assert_eq!(
             String::from_utf16(&substitute[..substitute.len() - 1]).unwrap(),
             r"\??\D:\target"

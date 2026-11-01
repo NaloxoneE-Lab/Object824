@@ -11,4 +11,8 @@ description = "the transcript replayer that drives a client without a real kerne
 o824-errs.workspace = true
 o824-model.workspace = true
 o824-protocol.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+o824-fixtures.workspace = true
