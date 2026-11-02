@@ -16,3 +16,7 @@ serde_json.workspace = true
 
 [dev-dependencies]
 o824-fixtures.workspace = true
+
+[[bin]]
+name = "o824-mock"
+path = "src/bin/o824-mock.rs"
