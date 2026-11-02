@@ -11,7 +11,9 @@ use std::path::{Path, PathBuf};
 use o824_errs::Code;
 use o824_model::Install;
 
-use crate::processes::{host_processes, process_roots, running_host_roots};
+use crate::processes::process_roots;
+use crate::scan::{scan_roots, DEFAULT_BUDGET, DEFAULT_MAX_ENTRIES};
+use crate::shortcuts::shortcut_roots;
 use crate::{profile_names, validate_with, HEALTH_DAMAGED, KIND_DESKTOP};
 
 /// Which layer of the discovery algorithm produced a candidate.
@@ -207,6 +209,22 @@ pub fn standard_roots(options: &Options) -> Vec<SourceRoot> {
     }
     if options.layers.process {
         roots.extend(process_roots());
+    }
+    if options.layers.shortcut {
+        let dirs = if options.shortcut_dirs.is_empty() {
+            crate::shortcuts::default_shortcut_dirs()
+        } else {
+            options.shortcut_dirs.clone()
+        };
+        roots.extend(shortcut_roots(&dirs));
+    }
+    if options.layers.scan {
+        let dirs = if options.scan_dirs.is_empty() {
+            crate::scan::default_scan_dirs()
+        } else {
+            options.scan_dirs.clone()
+        };
+        roots.extend(scan_roots(&dirs, DEFAULT_BUDGET, DEFAULT_MAX_ENTRIES));
     }
     roots
 }
@@ -566,6 +584,9 @@ pub fn fixed_volumes() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Only the tests reach for the process list directly; production code goes
+    // through `process_roots`.
+    use crate::processes::{host_processes, running_host_roots};
 
     #[test]
     fn the_version_comes_from_the_display_name_suffix() {

@@ -28,12 +28,22 @@ pub mod machine;
 #[allow(unsafe_code)]
 pub mod processes;
 
+// The shortcut layer: `IShellLink` reads every generation of the `.lnk` format, which
+// a hand-rolled parser would not.
+#[allow(unsafe_code)]
+pub mod shortcuts;
+
+// The bounded scan: pure filesystem work with a time budget, no Windows API.
+pub mod scan;
+
 pub use machine::{
     candidate_roots, dedupe_key, discover, fixed_volumes, parse_display_name_version,
     registry_roots, sorted_unique_roots, standard_roots, state_roots, volume_roots, Layers,
     Options, Source, SourceRoot,
 };
 pub use processes::{host_processes, running_host_roots, RunningHost};
+pub use scan::{default_scan_dirs, scan_roots, DEFAULT_BUDGET, DEFAULT_MAX_ENTRIES};
+pub use shortcuts::{default_shortcut_dirs, shortcut_roots};
 
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
