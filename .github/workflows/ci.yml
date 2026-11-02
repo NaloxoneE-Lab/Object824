@@ -17,7 +17,26 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test --workspace --all-features
+
+      # The test step is instrumented on purpose: a failing test binary only
+      # reports "exit code 1" in the job's conclusion, and the job log needs an
+      # authenticated download. Emitting the failing test names as workflow
+      # annotations puts them in the public checks API, so a failure is
+      # diagnosable without a token.
+      - name: cargo test
+        shell: pwsh
+        run: |
+          cargo test --workspace --all-features --no-fail-fast 2>&1 | Tee-Object -FilePath test-output.txt
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            $failures = Select-String -Path test-output.txt -Pattern '^test .* FAILED$|^---- .* stdout ----$' |
+              Select-Object -First 8
+            foreach ($line in $failures) { Write-Output "::error::$($line.Line.Trim())" }
+            $panics = Select-String -Path test-output.txt -Pattern 'panicked at' | Select-Object -First 4
+            foreach ($line in $panics) { Write-Output "::error::$($line.Line.Trim())" }
+          }
+          exit $code
+
       - name: Golden conformance
         run: cargo test -p o824-conformance -- --nocapture
       - run: cargo build --release --bin o824
