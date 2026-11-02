@@ -434,24 +434,42 @@ pub fn stop(record: &ProcessRecord) -> Result<(), Error> {
     }
     #[cfg(windows)]
     {
-        use windows::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
+        use windows::Win32::System::Threading::{
+            OpenProcess, TerminateProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
+            PROCESS_TERMINATE,
+        };
 
-        // SAFETY: the handle is closed before returning.
+        // SAFETY: the handle is closed on every path below.
         unsafe {
-            let handle = OpenProcess(PROCESS_TERMINATE, false, record.pid).map_err(|error| {
-                Error::new(
-                    Code::Internal,
-                    format!("web: cannot open pid {}: {error}", record.pid),
-                )
-            })?;
-            let result = TerminateProcess(handle, 0);
+            let handle = OpenProcess(PROCESS_TERMINATE | PROCESS_SYNCHRONIZE, false, record.pid)
+                .map_err(|error| {
+                    Error::new(
+                        Code::Internal,
+                        format!("web: cannot open pid {}: {error}", record.pid),
+                    )
+                })?;
+            let terminated = TerminateProcess(handle, 0);
+            // The process object outlives the process while any handle is open — the
+            // caller's own `Child` is one — so "the creation time still reads" is not
+            // the question. Waiting on the handle is what answers "is it gone".
+            let waited = WaitForSingleObject(handle, 10_000);
             let _ = windows::Win32::Foundation::CloseHandle(handle);
-            result.map_err(|error| {
+            terminated.map_err(|error| {
                 Error::new(
                     Code::Internal,
                     format!("web: cannot stop pid {}: {error}", record.pid),
                 )
             })?;
+            if waited != windows::Win32::Foundation::WAIT_OBJECT_0 {
+                return Err(Error::new(
+                    Code::Internal,
+                    format!(
+                        "web: pid {} was asked to stop but is still running after 10 seconds",
+                        record.pid
+                    ),
+                )
+                .with_param("pid", record.pid));
+            }
         }
     }
     Ok(())
