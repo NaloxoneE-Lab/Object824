@@ -36,6 +36,30 @@ pub struct InstallRef {
     pub kind: String,
 }
 
+/// A process this kernel started and is responsible for.
+///
+/// The image and the start time are the fingerprint: a pid is reused, so "the process
+/// with pid 1234" is not the same claim tomorrow as it is now, and killing on pid alone
+/// is how a tool murders something it never started.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcessRecord {
+    /// The installation this process serves.
+    pub install_id: String,
+    /// The process id.
+    pub pid: u32,
+    /// The port it listened on, when it is a server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+    /// The DSH home it was started with.
+    pub home: String,
+    /// The image it runs, as the system reported it.
+    pub image: String,
+    /// When it was started; with `image`, this is what makes a pid safe to kill.
+    pub started_at: String,
+    /// The file its stdout and stderr go to.
+    pub log_path: String,
+}
+
 /// The persisted state document.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct State {
@@ -46,6 +70,13 @@ pub struct State {
     /// and a missing key both read as "no installations".
     #[serde(default, deserialize_with = "deserialize_installs")]
     pub installs: BTreeMap<String, InstallRef>,
+    /// One record per process this kernel started, by installation id.
+    ///
+    /// The reference implementation knows nothing about processes; an unknown key is
+    /// ignored by it, and a file it wrote has no such key here. Both directions read
+    /// as "nothing is running", which is the truth for a file that never had the field.
+    #[serde(default, deserialize_with = "deserialize_processes")]
+    pub processes: BTreeMap<String, ProcessRecord>,
 }
 
 impl State {
@@ -66,6 +97,18 @@ impl State {
     }
 }
 
+impl State {
+    /// Records one started process under the installation it serves.
+    pub fn remember_process(&mut self, record: ProcessRecord) {
+        self.processes.insert(record.install_id.clone(), record);
+    }
+
+    /// Forgets the process serving `install_id`, if there is one.
+    pub fn forget_process(&mut self, install_id: &str) -> Option<ProcessRecord> {
+        self.processes.remove(install_id)
+    }
+}
+
 /// Reads `null` — which is what a Go implementation writes for an empty map —
 /// as an empty map.
 fn deserialize_installs<'de, D>(deserializer: D) -> Result<BTreeMap<String, InstallRef>, D::Error>
@@ -73,6 +116,17 @@ where
     D: serde::Deserializer<'de>,
 {
     let found: Option<BTreeMap<String, InstallRef>> = Option::deserialize(deserializer)?;
+    Ok(found.unwrap_or_default())
+}
+
+/// Reads a missing or `null` process map as empty, like the install map.
+fn deserialize_processes<'de, D>(
+    deserializer: D,
+) -> Result<BTreeMap<String, ProcessRecord>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let found: Option<BTreeMap<String, ProcessRecord>> = Option::deserialize(deserializer)?;
     Ok(found.unwrap_or_default())
 }
 
@@ -315,5 +369,61 @@ mod tests {
 
         let restored = load(&path).expect("load");
         assert_eq!(restored, second);
+    }
+
+    #[test]
+    fn a_state_file_without_processes_reads_as_nothing_running() {
+        let dir = temp_dir();
+        let path = state_path(dir.path());
+        // What the reference implementation writes: installations, and no notion of a
+        // process at all.
+        std::fs::write(
+            &path,
+            r#"{"installs":{"local-1":{"root":"D:\\x","kind":"desktop"}}}"#,
+        )
+        .expect("write");
+
+        let state = load(&path).expect("load");
+        assert_eq!(state.installs.len(), 1);
+        assert!(
+            state.processes.is_empty(),
+            "nothing running is the truth here"
+        );
+    }
+
+    #[test]
+    fn a_null_process_map_reads_as_empty() {
+        let dir = temp_dir();
+        let path = state_path(dir.path());
+        std::fs::write(&path, r#"{"installs":null,"processes":null}"#).expect("write");
+        let state = load(&path).expect("load");
+        assert!(state.processes.is_empty());
+    }
+
+    #[test]
+    fn a_process_record_round_trips() {
+        let dir = temp_dir();
+        let path = state_path(dir.path());
+        let mut state = State::default();
+        state.remember_process(ProcessRecord {
+            install_id: "i2".to_owned(),
+            pid: 4321,
+            port: Some(21846),
+            home: r"D:\home".to_owned(),
+            image: r"C:\npm\node.exe".to_owned(),
+            started_at: "2026-11-03T02:00:00Z".to_owned(),
+            log_path: r"D:\data\logs\i2.log".to_owned(),
+        });
+        save(&path, &state).expect("save");
+
+        let loaded = load(&path).expect("load");
+        assert_eq!(loaded.processes["i2"].pid, 4321);
+        assert_eq!(loaded.processes["i2"].port, Some(21846));
+        let mut loaded = loaded;
+        assert_eq!(
+            loaded.forget_process("i2").map(|record| record.pid),
+            Some(4321)
+        );
+        assert!(loaded.processes.is_empty());
     }
 }

@@ -33,6 +33,7 @@
 | `o824-mock` npm 包（WASI，跨平台） | ✅ 2026-11-02 | `packages/o824-mock` 的 Node 用例全绿 + CI `mock-package` 在 Node 20/24 上绿 + 装 tarball 后能回放三个录制 |
 | 发现算法补层（§7.7 第 1/4/5/6 层） | ✅ 2026-11-02 | 每层都有"找到 / 找不到"两侧用例（`cargo test -p o824-discovery`，24 个） |
 | 形态适配（desktop / web，含 F11 版本漂移） | ✅ 2026-11-03 | 两种形态各自可发现（`cargo test -p o824-discovery`）；F11 在本机真机上报出 rc.3 vs rc.5 |
+| 启停与日志（web 形态） | 🟡 2026-11-03 | `start`/`stop`/`status`/`logs` 已实现并真机验过；desktop 与 tui 未做 |
 | 共存检测（并发实例、端口残留、版本漂移） | 🟡 | 第 7 层（孤儿 profile）与**版本漂移**已落地；并发实例与端口残留依赖 P2 的 start/stop |
 
 设计见 [`docs/design/o824-mock-package.md`](design/o824-mock-package.md)，用户文档见

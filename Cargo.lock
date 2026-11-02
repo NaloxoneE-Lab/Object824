@@ -222,6 +222,7 @@ dependencies = [
  "o824-state",
  "o824-verify",
  "o824-version",
+ "o824-webform",
  "serde",
  "serde_json",
  "sha2",
@@ -286,6 +287,7 @@ version = "0.1.0"
 dependencies = [
  "o824-errs",
  "o824-fixtures",
+ "windows",
 ]
 
 [[package]]
@@ -404,6 +406,20 @@ dependencies = [
 [[package]]
 name = "o824-version"
 version = "0.1.0"
+
+[[package]]
+name = "o824-webform"
+version = "0.1.0"
+dependencies = [
+ "o824-discovery",
+ "o824-errs",
+ "o824-execx",
+ "o824-fixtures",
+ "o824-model",
+ "o824-state",
+ "serde_json",
+ "windows",
+]
 
 [[package]]
 name = "o824-yaml"

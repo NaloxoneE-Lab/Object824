@@ -18,6 +18,9 @@ pub mod flags;
 pub mod install;
 pub mod kernel_cmd;
 pub mod mock_cmd;
+pub mod process_cmd;
+#[cfg(test)]
+mod process_cmd_tests;
 pub mod render;
 pub mod repair;
 pub mod rollback;
@@ -94,10 +97,14 @@ pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i
         "mock" => mock_cmd::run(&args[1..], stdout, stderr),
         "diagnose" => diagnose_cmd::run(&args[1..], stdout, stderr),
         "kernel" => kernel_cmd::run(&args[1..], stderr),
+        "start" => process_cmd::start(&args[1..], stdout, stderr),
+        "stop" => process_cmd::stop(&args[1..], stdout, stderr),
+        "status" => process_cmd::status(&args[1..], stdout, stderr),
+        "logs" => process_cmd::logs(&args[1..], stdout, stderr),
         other => {
             let _ = writeln!(
                 stderr,
-                "o824: unknown command {other:?} (available in this build: diagnose, discover, doctor, kernel, mock, repair, rollback, snapshot)"
+                "o824: unknown command {other:?} (available in this build: diagnose, discover, doctor, kernel, logs, mock, repair, rollback, snapshot, start, status, stop)"
             );
             EXIT_USAGE
         }

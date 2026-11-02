@@ -23,11 +23,13 @@
 
 #![forbid(unsafe_code)]
 
+pub mod detached;
 pub mod timed;
 
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+pub use detached::spawn_detached;
 pub use timed::run_with_deadline;
 
 use o824_errs::{Code, Error};
