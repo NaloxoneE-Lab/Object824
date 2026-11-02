@@ -367,6 +367,9 @@ pub fn status(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -
                     "pid": record.pid,
                     "port": record.port,
                     "running": is_alive(record),
+                    // The URL carries the trust token, so it is read from the log rather
+                    // than stored — but a person asking what is running needs it.
+                    "url": o824_webform::url_from_log(std::path::Path::new(&record.log_path)),
                     "log": record.log_path,
                 })
             })
@@ -390,6 +393,9 @@ pub fn status(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -
             "{:<8} {:<8} pid={:<7} port={:<6} {}",
             record.install_id, state_word, record.pid, port, record.log_path
         );
+        if let Some(url) = o824_webform::url_from_log(std::path::Path::new(&record.log_path)) {
+            let _ = writeln!(stdout, "         {url}");
+        }
     }
     EXIT_OK
 }

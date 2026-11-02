@@ -301,6 +301,34 @@ fn stop_all_stops_what_was_started_and_forgets_what_is_gone() {
     );
 }
 
+/// The URL is what a person needs to open the running instance, and the token lives
+/// only in the log. `status` reads it back rather than storing a secret.
+#[test]
+fn status_shows_the_url_of_a_running_instance() {
+    let temp = o824_fixtures::TempDir::new("o824-status-url-").expect("temp dir");
+    let log = temp.path().join("web.log");
+    std::fs::write(&log, "dsh web: http://127.0.0.1:23232/?token=abc123\n").expect("write");
+
+    let mut stand_in = spawn_stand_in();
+    let image = image_of_stand_in(&mut stand_in);
+    let mut record = record_for("web", stand_in.id(), &image, "D:\\home");
+    record.port = Some(23232);
+    record.log_path = log.display().to_string();
+    state_at(temp.path(), Some(record));
+
+    let root = temp.path().display().to_string();
+    let (code, stdout, stderr) = run(crate::process_cmd::status, &["--data-root", &root]);
+
+    let _ = stand_in.kill();
+    let _ = stand_in.wait();
+
+    assert_eq!(code, 0, "{stderr}");
+    assert!(
+        stdout.contains("http://127.0.0.1:23232/?token=abc123"),
+        "{stdout}"
+    );
+}
+
 /// The image of the spawned stand-in, read after it is surely running.
 fn image_of_stand_in(child: &mut std::process::Child) -> String {
     for _ in 0..50 {
