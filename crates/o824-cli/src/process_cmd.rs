@@ -135,14 +135,8 @@ pub fn start(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
     // §21.4: the forms share one DSH home, so a desktop instance that is already
     // running means two runtimes on the same sessions. Warn rather than refuse — the
     // user may know exactly why they are starting a second one.
-    for host in o824_discovery::host_processes() {
-        let _ = writeln!(
-            stderr,
-            "warning: {} is already running (pid {}); it shares this DSH home, so both \
-             runtimes will see the same sessions",
-            o824_discovery::EXE_NAME,
-            host.pid
-        );
+    if let Some(warning) = desktop_already_running() {
+        let _ = writeln!(stderr, "{warning}");
     }
 
     let Some(package) = web_package(&context.home) else {
@@ -411,6 +405,26 @@ fn context_from(flags: &mut FlagSet) -> Option<Context> {
         None => o824_state::data_root(None),
     };
     Some(Context { data_root, home })
+}
+
+/// The warning shown when a desktop instance is already running.
+///
+/// The forms share one DSH home, so a second runtime sees the same sessions. The
+/// kernel warns and lets the user decide: refusing would be wrong for someone who
+/// knows why, and silence would be wrong for everyone else.
+pub fn desktop_already_running() -> Option<String> {
+    let hosts = o824_discovery::host_processes();
+    let first = hosts.first()?;
+    let count = if hosts.len() == 1 {
+        String::new()
+    } else {
+        format!(" and {} more", hosts.len() - 1)
+    };
+    Some(format!(
+        "warning: {} is already running (pid {}{count}); it shares this DSH home, so both runtimes will see the same sessions",
+        o824_discovery::EXE_NAME,
+        first.pid
+    ))
 }
 
 /// The global web package, when this machine has one.

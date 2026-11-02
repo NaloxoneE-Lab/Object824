@@ -231,6 +231,41 @@ fn start_refuses_a_port_somebody_else_is_listening_on() {
     drop(listener);
 }
 
+/// §21.4's first risk: two forms, one DSH home. The kernel must say so rather than
+/// start a second runtime in silence.
+#[test]
+fn a_running_desktop_instance_is_named_before_a_second_form_starts() {
+    let temp = o824_fixtures::TempDir::new("o824-desktop-warning-").expect("temp dir");
+    let fake = temp.path().join("Programs").join("DeepSeek Harness");
+    std::fs::create_dir_all(&fake).expect("mkdir");
+    let exe = fake.join(o824_discovery::EXE_NAME);
+    std::fs::copy(r"C:\Windows\System32\cmd.exe", &exe).expect("copy a stand-in");
+
+    let mut child = std::process::Command::new(&exe)
+        .args(["/c", "ping", "-n", "30", "127.0.0.1"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn the stand-in host");
+
+    let mut warning = None;
+    for _ in 0..100 {
+        warning = crate::process_cmd::desktop_already_running();
+        if warning.is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+
+    let _ = child.kill();
+    let _ = child.wait();
+
+    let warning = warning.expect("a running desktop instance is reported");
+    assert!(warning.contains("DeepSeek Harness"), "{warning}");
+    assert!(warning.contains("same sessions"), "{warning}");
+}
+
 /// The image of the spawned stand-in, read after it is surely running.
 fn image_of_stand_in(child: &mut std::process::Child) -> String {
     for _ in 0..50 {
