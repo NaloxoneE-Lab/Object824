@@ -124,6 +124,10 @@ pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i
         return EXIT_OK;
     }
 
+    if let Some(note) = orphan_note(&options, &installs) {
+        let _ = writeln!(stderr, "{note}");
+    }
+
     let table = install_table(&installs);
     if let Err(error) = stdout.write_all(table.as_bytes()) {
         let error = Error::new(
@@ -134,6 +138,26 @@ pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i
         return exit_code_of(Some(&error));
     }
     EXIT_OK
+}
+
+/// The note shown when a DSH home has profiles but nothing installed uses them.
+///
+/// A per-install check cannot report this: there is no installation to attach the
+/// finding to. It is the one state where "profiles exist" is the only evidence left.
+fn orphan_note(
+    options: &o824_discovery::Options,
+    installs: &[o824_model::Install],
+) -> Option<String> {
+    let home = o824_discovery::resolve_home(options.home.as_deref());
+    let orphans = o824_discovery::orphan_profiles(&home, installs);
+    if orphans.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "no installation found, but {} holds profiles: {}",
+        home.display(),
+        orphans.join(", ")
+    ))
 }
 
 /// Renders the human-facing table: a header plus one row per installation,
@@ -203,5 +227,36 @@ mod tests {
     fn an_empty_list_still_prints_the_header() {
         let table = install_table(&[]);
         assert_eq!(table, "id  kind  version  root  health\n");
+    }
+
+    #[test]
+    fn the_orphan_note_names_the_home_and_its_profiles() {
+        let home = o824_fixtures::TempDir::new("o824-cli-orphan-").expect("temp dir");
+        std::fs::create_dir_all(home.path().join("profiles").join("desktop")).expect("mkdir");
+        let options = o824_discovery::Options {
+            roots: None,
+            extra_dirs: Vec::new(),
+            home: Some(home.path().display().to_string()),
+            ..Default::default()
+        };
+        let note = orphan_note(&options, &[]).expect("a note");
+        assert!(note.contains("desktop"), "{note}");
+        assert!(note.contains(&home.path().display().to_string()), "{note}");
+    }
+
+    #[test]
+    fn no_orphan_note_when_an_installation_exists() {
+        let home = o824_fixtures::TempDir::new("o824-cli-orphan-").expect("temp dir");
+        std::fs::create_dir_all(home.path().join("profiles").join("desktop")).expect("mkdir");
+        let fixture = o824_fixtures::build("ok").expect("fixture");
+        let install =
+            o824_discovery::validate_with(fixture.root(), home.path(), None).expect("validate");
+        let options = o824_discovery::Options {
+            roots: None,
+            extra_dirs: Vec::new(),
+            home: Some(home.path().display().to_string()),
+            ..Default::default()
+        };
+        assert!(orphan_note(&options, &[install]).is_none());
     }
 }

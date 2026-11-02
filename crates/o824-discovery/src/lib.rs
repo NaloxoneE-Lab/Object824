@@ -118,6 +118,21 @@ fn env_value(name: &str) -> Option<String> {
     std::env::var(name).ok()
 }
 
+/// The profiles that belong to no installation.
+///
+/// A DSH home can outlive the installation that created it: the user uninstalled DSH,
+/// or moved it, and `profiles\` is still there with the user's settings. Reporting that
+/// is more useful than guessing where the installation went, so this layer only names
+/// the profiles and leaves the decision to the caller.
+///
+/// When any installation exists, nothing is orphaned: the profiles belong to it.
+pub fn orphan_profiles(home: &Path, installs: &[Install]) -> Vec<String> {
+    if !installs.is_empty() {
+        return Vec::new();
+    }
+    profile_names(home)
+}
+
 /// Lists the directories under `<home>\profiles`, sorted by name.
 ///
 /// The result is always empty rather than absent: `Install.profiles` has no
@@ -403,5 +418,24 @@ mod tests {
         let path = dir.path().join("app.asar");
         fs::write(&path, b"not an asar").expect("write");
         assert_eq!(parse_asar_version(&path), None);
+    }
+
+    #[test]
+    fn a_profile_without_an_installation_is_orphaned() {
+        let home = o824_fixtures::TempDir::new("o824-orphan-").expect("temp dir");
+        std::fs::create_dir_all(home.path().join("profiles").join("desktop")).expect("mkdir");
+        assert_eq!(
+            orphan_profiles(home.path(), &[]),
+            vec!["desktop".to_owned()]
+        );
+    }
+
+    #[test]
+    fn a_profile_next_to_an_installation_is_not_orphaned() {
+        let home = o824_fixtures::TempDir::new("o824-orphan-").expect("temp dir");
+        std::fs::create_dir_all(home.path().join("profiles").join("desktop")).expect("mkdir");
+        let fixture = o824_fixtures::build("ok").expect("fixture");
+        let install = validate_with(fixture.root(), home.path(), None).expect("validate");
+        assert!(orphan_profiles(home.path(), &[install]).is_empty());
     }
 }
