@@ -8,7 +8,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, renameSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -53,14 +54,23 @@ test('the tarball carries the module, the entry, the rules and the recordings', 
   assert.equal(entry.version, manifest.version);
 });
 
-test('a package without the module refuses to build', { skip: skip.skip }, () => {
-  const backup = `${wasm}.bak`;
-  renameSync(wasm, backup);
+test('a package without the module refuses to build', skip, () => {
+  // The check runs against a copy: renaming the shared o824-mock.wasm would make the
+  // sibling test file fail for the wrong reason, because node --test runs test files in
+  // parallel. The copy is everything the package needs except the module.
+  const copy = mkdtempSync(join(tmpdir(), 'o824-mock-nowasm-'));
   try {
-    const result = pack();
+    for (const entry of ['package.json', 'bin', 'lib', 'scripts', 'transcripts']) {
+      cpSync(join(packageDir, entry), join(copy, entry), { recursive: true });
+    }
+    const result = spawnSync('npm', ['pack', '--dry-run', '--json'], {
+      cwd: copy,
+      shell: true,
+      encoding: 'utf8',
+    });
     assert.notEqual(result.status, 0, 'packing without the module must fail');
-    assert.match(result.output, /build-mock-package\.ps1/);
+    assert.match(`${result.stdout ?? ''}${result.stderr ?? ''}`, /build-mock-package\.ps1/);
   } finally {
-    renameSync(backup, wasm);
+    rmSync(copy, { recursive: true, force: true });
   }
 });
