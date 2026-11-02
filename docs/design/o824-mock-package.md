@@ -117,7 +117,7 @@ GitHub Actions job mock-package                            → Node 20 与 24 �
 
 | 级别 | 问题 | 现在的行为 |
 |---|---|---|
-| Critical | `process.exit()` 与尚未写完的 stdout 竞争，200 KiB 的 plan 结果有约 40% 概率崩在 libuv（exit 127） | 改成设置 `process.exitCode`，让事件循环把最后一帧写完 |
+| Critical | `process.exit()` 与尚未写完的 stdout 竞争：200 KiB 的 plan 结果会崩在 libuv 断言（`UV_HANDLE_CLOSING`），退出码 `3221226505` | 改成设置 `process.exitCode`，让事件循环把最后一帧写完 |
 | Critical | transcript 目录不存在时，`new WASI` 抛 `UVWASI_ENOENT` + 栈、退出码 1 | 启动前在宿主机检查文件，退出码 8、消息里是用户自己打的路径 |
 | Important | README 的客户端示例用 shell 且不关 stdin | 改成直接 spawn 安装好的包、结束 stdin；示例本身进了发布校验脚本 |
 | Important | CI 无法区分"22 个通过"与"一个都没跑" | 断言通过数 ≥ 23 |
@@ -126,3 +126,19 @@ GitHub Actions job mock-package                            → Node 20 与 24 �
 | Important | "空 64 KiB 行不被截断"只测了 >8 MiB 的拒绝 | 补 200 KiB 帧往返 ×6 |
 
 **未修的 minor**（记录在计划的 ledger 里）：只重写第一个 `--transcript`、`--transcript=value` 不支持、`package.json` 缺 `repository`/`LICENSE`、测试里 `shell:true` 的 DEP0190 等。
+
+### 11.1 那个竞态的实测数字（2026-11-02 补记）
+
+我最初报告"无法在本机复现 C1"，那是**测量错误**：只跑了 12 次就下结论。6.5% 的事件跑 12 次，一次都不出现的概率约 45%。
+
+用修复前的代码（`process.exit(wasi.start(instance))`）与修复后各跑 200 次，200 KiB 回复、stdout 重定向到文件：
+
+| 版本 | 失败次数 | 退出码 | stderr |
+|---|---|---|---|
+| 修复前 | **13 / 200（6.5%）** | `3221226505`（0xC0000409，abort） | `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\winsync.c, line 76` |
+| 修复后 | **0 / 200** | 0 | — |
+
+两个附带结论：
+
+- **尺寸敏感**：7 MiB 回复在修复前 12 次全过（评审也是 0/12）。200 KiB 才是竞态窗口——写入小到还没完成、大到不会同步返回。
+- **测试是概率性护栏**：用例跑 20 次，6.5% 的回归漏检率约 26%。真正的证据是上面这张表，测试只是防止"悄悄改回去"。

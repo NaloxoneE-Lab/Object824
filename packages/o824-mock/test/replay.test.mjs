@@ -180,7 +180,11 @@ test('a large frame is replayed whole, every time', options, () => {
         JSON.stringify({ jsonrpc: '2.0', id: 1, seq: 1, result: { protocolVersion: '0.1.0', pad: padding } }),
       ].join('\n') + '\n',
     );
-    for (let attempt = 0; attempt < 6; attempt += 1) {
+    // The race this guards is probabilistic: measured at 13 failures in 200 runs
+    // with process.exit(), and 0 in 200 with the exit code set. Twenty runs keep the
+    // suite quick while making a regression likely to show; the measurement itself is
+    // recorded in docs/design/o824-mock-package.md.
+    for (let attempt = 0; attempt < 20; attempt += 1) {
       const result = run(['--transcript', path], [{ jsonrpc: '2.0', id: 1, method: 'o824.info' }]);
       assert.equal(result.status, 0, `attempt ${attempt}: ${result.stderr}`);
       const answered = frames(result.stdout);
