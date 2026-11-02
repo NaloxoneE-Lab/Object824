@@ -83,21 +83,33 @@ jobs:
       - name: Test the package
         shell: pwsh
         run: |
-          node --test "packages/o824-mock/test/*.test.mjs" 2>&1 | Tee-Object -FilePath mock-test.txt
+          # The files are named explicitly: Node 20 does not expand a glob for --test,
+          # and an unmatched pattern exits zero having run nothing.
+          $files = Get-ChildItem packages/o824-mock/test -Filter *.test.mjs | ForEach-Object { $_.FullName }
+          node --test --test-reporter=spec @files 2>&1 | Tee-Object -FilePath mock-test.txt
           $code = $LASTEXITCODE
-          # An unmatched pattern exits zero with zero tests, so the count is the check:
-          # "22 passed" and "nothing ran" must not look the same.
-          $passed = [int](Select-String -Path mock-test.txt -Pattern 'pass (\d+)' |
-            Select-Object -First 1 | ForEach-Object { $_.Matches[0].Groups[1].Value })
+
+          # The count is the check: "23 passed" and "nothing ran" must not look alike.
+          $passed = 0
+          $match = Select-String -Path mock-test.txt -Pattern 'pass (\d+)' | Select-Object -Last 1
+          if ($match) { $passed = [int]$match.Matches[0].Groups[1].Value }
           Write-Output "passing tests: $passed (at least 23 expected)"
           if ($passed -lt 23) {
             Write-Output "::error::only $passed tests ran; the suite did not execute"
             $code = 1
           }
+
           if ($code -ne 0) {
-            Select-String -Path mock-test.txt -Pattern '^✖|^\s*not ok' |
-              Select-Object -First 8 |
-              ForEach-Object { Write-Output "::error::$($_.Line.Trim())" }
+            # Annotations are readable without a token; the job log is not. The failing
+            # test's own message is what makes a red run actionable.
+            $lines = Get-Content mock-test.txt
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+              if ($lines[$i] -match '^\s*✖|^\s*not ok') {
+                $end = [Math]::Min($i + 6, $lines.Count - 1)
+                for ($j = $i; $j -le $end; $j++) { Write-Output "::error::$($lines[$j].Trim())" }
+                $i = $end
+              }
+            }
           }
           exit $code
 
