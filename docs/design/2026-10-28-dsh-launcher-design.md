@@ -603,7 +603,13 @@ UI 开发者应该能照抄这段就跑起来。四条消息走完"我是谁 →
 
 没有这两样，第三方 UI 只能在真机上碰运气：
 
-- `o824-mock`：按 `spec/transcripts/*.jsonl` 回放的内核替身，支持 `--transcript`、`--delay`、`--fail-at <seq>`（在第 N 条注入错误）、`--protocol <ver>`。UI 开发者 `npx o824-mock` 就能开发全部界面，不需要 Windows、不需要坏掉的 DSH。
+- `o824-mock`：按 `spec/transcripts/*.jsonl` 回放的内核替身，支持 `--transcript`、`--delay`、`--fail-at <seq>`（在第 N 条注入错误）、`--protocol <ver>`。UI 开发者就能开发全部界面，不需要 Windows、不需要坏掉的 DSH。
+
+**2026-11-02 落实**：`o824-mock` 实现为 npm 包，内含内核同一份回放代码编出的
+`wasm32-wasip1` 模块 + 一层只管 stdio 的 launcher，因此"不需要 Windows"是真的（WASI 跨平台）。
+安装方式两条：GitHub Release 的 tarball（`npm i -D <release-url>`，不需要 npm 账号），
+或将来发布到 registry 后用 `npx o824-mock`。设计与取舍见
+`docs/design/o824-mock-package.md`，用户文档见 `packages/o824-mock/README.md`。
 - `spec/fixtures/`：**合成安装树**（每个几百 KB 的假树，不含任何真实二进制）——正常树、F01 坏链、F02 缺 bundle、F03 重复 loader、F17 构建白名单、F20 半装。内核的修复逻辑对着这些跑回归测试。
 
 ### 19.6 CLI 契约（脚本用户）

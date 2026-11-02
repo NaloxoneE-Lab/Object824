@@ -36,6 +36,21 @@ O824 内核的 Rust 实现。**Go 版（`D:\dsh work\Object 824`，tag `v0-go-re
 
 前两条在仓库里、可自动化。**第 1 条是第一周就要能跑的**。
 
+## 用 mock 开发 UI（不需要 DSH，也不需要 Windows）
+
+第三方 UI 可以完全对着录制开发：`o824-mock` 把 `spec/transcripts/` 里的会话回放出来，
+说和内核一模一样的 Content-Length 帧。它跑的是**同一份 Rust 代码**——编成 WebAssembly
+在 Node 里执行，所以不存在"第二份实现慢慢漂移"。
+
+```bash
+npm i -D https://github.com/NaloxoneE-Lab/Object824/releases/download/v0.1.2/o824-mock-0.1.2.tgz
+npx o824-mock --transcript plan-apply
+```
+
+要求 Node ≥ 20。客户端代码与对着真内核跑时**完全一样**，只换命令行。
+详见 [`packages/o824-mock/README.md`](packages/o824-mock/README.md)，构建见
+`scripts/build-mock-package.ps1`。
+
 ## 目录
 
 ```
