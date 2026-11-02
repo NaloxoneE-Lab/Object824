@@ -195,6 +195,42 @@ fn logs_prints_the_tail_of_the_recorded_file() {
     assert_eq!(stdout, "three\nfour\n");
 }
 
+/// A port someone else is listening on must be named, and the start must stop there —
+/// before spawning anything, so the check is testable without DSH installed.
+#[test]
+fn start_refuses_a_port_somebody_else_is_listening_on() {
+    let temp = o824_fixtures::TempDir::new("o824-start-port-").expect("temp dir");
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let home = temp.path().join("home");
+    std::fs::create_dir_all(&home).expect("mkdir");
+
+    let root = temp.path().display().to_string();
+    let home_text = home.display().to_string();
+    let (code, _stdout, stderr) = run(
+        crate::process_cmd::start,
+        &[
+            "--install",
+            "web",
+            "--home",
+            &home_text,
+            "--data-root",
+            &root,
+            "--port",
+            &port.to_string(),
+        ],
+    );
+
+    assert_eq!(
+        code,
+        crate::exit_code_of(Some(&o824_errs::Error::new(Code::PortInUse, "x"))),
+        "{stderr}"
+    );
+    assert!(stderr.contains("already listened on"), "{stderr}");
+    assert!(stderr.contains(&port.to_string()), "{stderr}");
+    drop(listener);
+}
+
 /// The image of the spawned stand-in, read after it is surely running.
 fn image_of_stand_in(child: &mut std::process::Child) -> String {
     for _ in 0..50 {

@@ -48,6 +48,120 @@ pub struct Started {
     pub record: ProcessRecord,
 }
 
+/// Who is listening on a port.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PortOwner {
+    /// The port, in host byte order.
+    pub port: u16,
+    /// The owning process.
+    pub pid: u32,
+    /// The image that process runs, when it can be read.
+    pub image: String,
+}
+
+/// The process listening on `port`, if one is.
+///
+/// This is the answer to "the web form was killed but the port is still held": the
+/// kernel refuses to guess, and naming the pid is what lets a person decide whether it
+/// is the process they just stopped or something they care about.
+pub fn port_owner(port: u16) -> Option<PortOwner> {
+    #[cfg(windows)]
+    {
+        let rows = listening_rows()?;
+        let (pid, image) = rows
+            .into_iter()
+            .find(|(local_port, _, _)| *local_port == port)
+            .map(|(_, pid, image)| (pid, image))?;
+        Some(PortOwner {
+            port,
+            pid,
+            image: image.unwrap_or_default(),
+        })
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = port;
+        None
+    }
+}
+
+/// True when nothing is listening on `port`.
+pub fn port_is_free(port: u16) -> bool {
+    port_owner(port).is_none()
+}
+
+/// Waits until `port` has no listener, and says whether it got there.
+pub fn wait_for_port_release(port: u16, timeout: std::time::Duration) -> bool {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        if port_is_free(port) {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+/// Every TCP listener, as `(port, pid, image)`.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn listening_rows() -> Option<Vec<(u16, u32, Option<String>)>> {
+    use windows::Win32::Foundation::{ERROR_INSUFFICIENT_BUFFER, NO_ERROR};
+    use windows::Win32::NetworkManagement::IpHelper::{
+        GetExtendedTcpTable, MIB_TCPROW_OWNER_PID, TCP_TABLE_OWNER_PID_LISTENER,
+    };
+    use windows::Win32::Networking::WinSock::AF_INET;
+
+    // SAFETY: the table is sized by a first call, allocated here, and only read as far
+    // as the second call says it wrote. Every pointer is a local.
+    unsafe {
+        let mut size = 0u32;
+        let first = GetExtendedTcpTable(
+            None,
+            &mut size,
+            false,
+            AF_INET.0 as u32,
+            TCP_TABLE_OWNER_PID_LISTENER,
+            0,
+        );
+        if first != ERROR_INSUFFICIENT_BUFFER.0 && first != NO_ERROR.0 {
+            return None;
+        }
+        let mut buffer = vec![0u8; size as usize];
+        let status = GetExtendedTcpTable(
+            Some(buffer.as_mut_ptr() as *mut _),
+            &mut size,
+            false,
+            AF_INET.0 as u32,
+            TCP_TABLE_OWNER_PID_LISTENER,
+            0,
+        );
+        if status != NO_ERROR.0 {
+            return None;
+        }
+
+        // The table starts with an entry count, then that many rows.
+        let count = *(buffer.as_ptr() as *const u32) as usize;
+        let rows = buffer.as_ptr().add(4) as *const MIB_TCPROW_OWNER_PID;
+        let mut listeners = Vec::with_capacity(count);
+        for index in 0..count {
+            let row = &*rows.add(index);
+            // The port is stored in network byte order.
+            let port = u16::from_be(row.dwLocalPort as u16);
+            let pid = row.dwOwningPid;
+            listeners.push((port, pid, image_of(pid)));
+        }
+        Some(listeners)
+    }
+}
+
+#[cfg(not(windows))]
+fn listening_rows() -> Option<Vec<(u16, u32, Option<String>)>> {
+    None
+}
+
 /// The program and arguments that boot the web form of one installation.
 ///
 /// The `dsh` shim on PATH is a `.cmd`, which needs a shell to run; the package's own
@@ -368,6 +482,49 @@ fn append(path: &Path, line: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_process_listening_on_a_port_is_named() {
+        // Our own listener: no dependency on DSH or node, and the pid is certainly the
+        // one that owns it.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        let owner = port_owner(port).expect("a listener is there");
+        assert_eq!(owner.pid, std::process::id());
+        assert!(
+            !owner.image.is_empty(),
+            "the image is what makes it actionable"
+        );
+        drop(listener);
+    }
+
+    #[test]
+    fn a_port_with_nothing_on_it_is_free() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        drop(listener);
+        // The kernel may hold a TIME_WAIT, but nothing is *listening*.
+        assert!(port_is_free(port));
+    }
+
+    #[test]
+    fn waiting_for_a_release_sees_it_happen() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(150));
+            drop(listener);
+        });
+        assert!(wait_for_port_release(port, Duration::from_secs(5)));
+    }
+
+    #[test]
+    fn waiting_for_a_release_that_never_comes_gives_up() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        assert!(!wait_for_port_release(port, Duration::from_millis(300)));
+        drop(listener);
+    }
 
     #[test]
     fn the_readiness_line_is_the_one_dsh_prints() {

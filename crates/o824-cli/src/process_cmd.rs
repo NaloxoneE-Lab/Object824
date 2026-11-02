@@ -108,6 +108,43 @@ pub fn start(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
         state.forget_process(&install_id);
     }
 
+    // A port that is already being listened on is not a start failure to report
+    // generically: naming the owner is what lets a person tell "this is my old server"
+    // from "this is something I care about".
+    if let Some(port) = port {
+        if let Some(owner) = o824_webform::port_owner(port) {
+            let error = Error::new(
+                Code::PortInUse,
+                format!(
+                    "port {port} is already listened on by pid {} ({})",
+                    owner.pid,
+                    if owner.image.is_empty() {
+                        "unknown"
+                    } else {
+                        &owner.image
+                    }
+                ),
+            )
+            .with_param("port", port)
+            .with_param("pid", owner.pid);
+            let _ = writeln!(stderr, "{error}");
+            return exit_code_of(Some(&error));
+        }
+    }
+
+    // §21.4: the forms share one DSH home, so a desktop instance that is already
+    // running means two runtimes on the same sessions. Warn rather than refuse — the
+    // user may know exactly why they are starting a second one.
+    for host in o824_discovery::host_processes() {
+        let _ = writeln!(
+            stderr,
+            "warning: {} is already running (pid {}); it shares this DSH home, so both \
+             runtimes will see the same sessions",
+            o824_discovery::EXE_NAME,
+            host.pid
+        );
+    }
+
     let Some(package) = web_package(&context.home) else {
         let error = Error::new(
             Code::InstallDir,
@@ -209,6 +246,26 @@ pub fn stop(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> 
         let _ = writeln!(stderr, "{error}");
         return exit_code_of(Some(&error));
     }
+    // The process is gone; the port may not be. A child of the server can hold it, and
+    // saying so is more useful than letting the next start fail with "port in use".
+    if let Some(port) = record.port {
+        if !o824_webform::wait_for_port_release(port, Duration::from_secs(5)) {
+            if let Some(owner) = o824_webform::port_owner(port) {
+                let _ = writeln!(
+                    stderr,
+                    "warning: port {port} is still listened on by pid {} ({}); \
+                     that is not the process this kernel started",
+                    owner.pid,
+                    if owner.image.is_empty() {
+                        "unknown"
+                    } else {
+                        &owner.image
+                    }
+                );
+            }
+        }
+    }
+
     state.forget_process(&install_id);
     if let Err(error) = o824_state::save(&state_path, &state) {
         let _ = writeln!(stderr, "{error}");
