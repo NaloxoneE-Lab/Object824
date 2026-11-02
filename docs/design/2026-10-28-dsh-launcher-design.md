@@ -491,7 +491,7 @@ o824 spec-check          JSON Schema + golden transcript 自检
 | F08 | 配置写了某模型，页面没有 | 适配器**静默丢弃**目录里没有的 id。判据：`listModels(provider)` 实际公布清单 vs 配置清单 | C | `E_MODEL_DROPPED` |
 | F09 | 日志干净、功能没了 | loader 报错被默认日志级别吞掉；桌面壳**吞 stderr**（只在崩溃时展示尾部）。判据：绕开壳直跑 `bin.js`，stdout/stderr 双留档 | C（诊断即价值） | `E_LOG_SWALLOWED` |
 | F10 | 升级后行为变了、没人改配置 | `settings.yaml` 被客户端启动后**程序化重写**（实测升级后 25 秒被整体重写）。判据：快照对比 mtime 与内容哈希 | C | `E_SETTINGS_REWRITTEN` |
-| F11 | 升级后插件全挂 | core 与内部伙伴包版本漂移（rc 混装）。判据：两棵 `node_modules` 版本表 diff | A（版本配平） | `E_VERSION_DRIFT` |
+| F11 | 升级后插件全挂 | **判据（2026-11-03 实施修订）**：同一台机器上**多个形态的 DSH 版本不一致**（它们共用 `~/.dsh`，各自带的运行时不同）。本机实测即为该故障：desktop `0.2.1-rc.3` vs 全局 npm 包 `0.2.1-rc.5`。原判据"两棵 node_modules 版本表 diff"在实践中不可用——profile 里没有 core 包，插件自己的 `node_modules` 只有用户装的插件 | A（版本配平，尚未实现） | `E_VERSION_DRIFT` |
 | F12 | 某插件界面白屏 | client 半身缺 react（0.1.5 起宿主不再随包发）。判据：client 包的 peer 与宿主实际提供比对 | A（补 peer） | `E_CLIENT_PEER` |
 | F13 | 技能列表少了某个技能 | frontmatter 的 description 含 `: ` → YAML 解析失败 → **技能静默消失**。判据：解析 frontmatter 并比对技能目录 | A | `E_SKILL_FRONTMATTER` |
 
