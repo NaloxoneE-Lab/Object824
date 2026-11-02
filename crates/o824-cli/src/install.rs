@@ -63,6 +63,7 @@ pub fn select(
             roots: None,
             extra_dirs: Vec::new(),
             home: home.map(str::to_owned),
+            ..Default::default()
         })?;
         return installs
             .into_iter()

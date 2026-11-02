@@ -67,6 +67,7 @@ pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i
         roots: None,
         extra_dirs: Vec::new(),
         home: flags.value("home").map(str::to_owned),
+        ..Default::default()
     };
     if let Some(root) = explicit_root {
         options.roots = Some(vec![PathBuf::from(root)]);

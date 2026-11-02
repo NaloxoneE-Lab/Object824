@@ -262,6 +262,7 @@ dependencies = [
  "o824-errs",
  "o824-fixtures",
  "o824-model",
+ "o824-state",
  "serde",
  "serde_json",
  "windows",

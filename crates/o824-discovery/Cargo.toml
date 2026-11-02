@@ -10,6 +10,7 @@ description = "locates DeepSeek Harness installations and validates the desktop 
 [dependencies]
 o824-errs.workspace = true
 o824-model.workspace = true
+o824-state.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 windows.workspace = true

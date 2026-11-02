@@ -13,16 +13,86 @@ use o824_model::Install;
 
 use crate::{profile_names, validate_with, HEALTH_DAMAGED, KIND_DESKTOP};
 
+/// Which layer of the discovery algorithm produced a candidate.
+///
+/// The order of the variants is the precedence order: when two layers name the same
+/// real path, the earlier one keeps the root and decides how it is spelled.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Source {
+    /// The root the state file remembered from an earlier run.
+    State,
+    /// The uninstall registry.
+    Registry,
+    /// The per-user install directory on a fixed volume.
+    Volume,
+    /// A running process whose image is the host executable.
+    Process,
+    /// A shortcut on the desktop or in the start menu.
+    Shortcut,
+    /// The bounded scan of last resort.
+    Scan,
+    /// A root the caller named explicitly.
+    Explicit,
+}
+
+/// Which layers to consult.
+///
+/// Tests turn most of them off to exercise one at a time; a caller that already knows
+/// the paths sets [`Options::roots`], which skips the machine entirely.
+#[derive(Clone, Copy, Debug)]
+pub struct Layers {
+    /// Read the root the state file remembered.
+    pub state: bool,
+    /// Consult the uninstall registry.
+    pub registry: bool,
+    /// Look in the per-user install directory on every fixed volume.
+    pub volumes: bool,
+    /// Follow running host processes to their image directory.
+    pub process: bool,
+    /// Follow shortcuts on the desktop and in the start menu.
+    pub shortcut: bool,
+    /// Run the bounded scan of last resort.
+    pub scan: bool,
+}
+
+impl Default for Layers {
+    fn default() -> Layers {
+        Layers {
+            state: true,
+            registry: true,
+            volumes: true,
+            process: true,
+            shortcut: true,
+            scan: true,
+        }
+    }
+}
+
+impl Layers {
+    /// Only the layers named here; the rest are off.
+    pub fn only(source: Source) -> Layers {
+        Layers {
+            state: source == Source::State,
+            registry: source == Source::Registry,
+            volumes: source == Source::Volume,
+            process: source == Source::Process,
+            shortcut: source == Source::Shortcut,
+            scan: source == Source::Scan,
+        }
+    }
+}
+
 /// Controls [`discover`].
 ///
-/// `roots == None` means "scan the standard locations": the uninstall registry
-/// and the per-user install directory on every fixed volume. `Some(vec![])` —
-/// even an empty one — means "use exactly these roots instead", which is what
-/// tests and callers that already know the paths want. `extra_dirs` are always
-/// added on top of whichever source set was selected.
+/// `roots == None` means "scan the standard locations": the state file, the uninstall
+/// registry, the per-user install directory on every fixed volume, running processes,
+/// shortcuts, and the bounded scan. `Some(vec![])` — even an empty one — means "use
+/// exactly these roots instead", which is what tests and callers that already know the
+/// paths want. `extra_dirs` are always added on top of whichever source set was
+/// selected.
 ///
-/// `home` is the DSH home whose `profiles\` directory is reported; `None` means
-/// resolve the default.
+/// `home` is the DSH home whose `profiles` directory is reported; `None` means resolve
+/// the default.
 #[derive(Clone, Debug, Default)]
 pub struct Options {
     /// An explicit root set, or the standard machine scan.
@@ -31,6 +101,14 @@ pub struct Options {
     pub extra_dirs: Vec<PathBuf>,
     /// The DSH home, or `None` for the default.
     pub home: Option<String>,
+    /// Which layers the standard scan consults.
+    pub layers: Layers,
+    /// The state file to read, or `None` for the default under the data root.
+    pub state_path: Option<PathBuf>,
+    /// The directories shortcuts are looked for in, or empty for the defaults.
+    pub shortcut_dirs: Vec<PathBuf>,
+    /// The directories the bounded scan walks, or empty for the defaults.
+    pub scan_dirs: Vec<PathBuf>,
 }
 
 /// One discovery candidate. `registry_version` is set only for candidates found
@@ -41,6 +119,8 @@ pub struct SourceRoot {
     pub root: String,
     /// The version parsed from the registry entry, when there is one.
     pub registry_version: Option<String>,
+    /// Which layer produced this candidate.
+    pub source: Source,
 }
 
 /// Returns every installation root it can find, valid or damaged.
@@ -83,12 +163,13 @@ pub fn discover(options: &Options) -> Result<Vec<Install>, o824_errs::Error> {
 /// Assembles, cleans, deduplicates, and sorts the roots to inspect.
 pub fn candidate_roots(options: &Options) -> Vec<SourceRoot> {
     let mut roots: Vec<SourceRoot> = match &options.roots {
-        None => standard_roots(),
+        None => standard_roots(options),
         Some(roots) => roots
             .iter()
             .map(|root| SourceRoot {
                 root: root.display().to_string(),
                 registry_version: None,
+                source: Source::Explicit,
             })
             .collect(),
     };
@@ -96,20 +177,60 @@ pub fn candidate_roots(options: &Options) -> Vec<SourceRoot> {
         roots.push(SourceRoot {
             root: extra.display().to_string(),
             registry_version: None,
+            source: Source::Explicit,
         });
     }
     sorted_unique_roots(roots)
 }
 
-/// The default machine scan: uninstall registry entries first, then the per-user
-/// install directory on every fixed volume.
-pub fn standard_roots() -> Vec<SourceRoot> {
-    let mut roots = registry_roots();
-    roots.extend(volume_roots().into_iter().map(|root| SourceRoot {
-        root,
-        registry_version: None,
-    }));
+/// The default machine scan, in precedence order.
+///
+/// Each layer contributes what it found; a layer that fails contributes nothing rather
+/// than failing the scan. The order matters: [`sorted_unique_roots`] keeps the first
+/// candidate for a real path, so a remembered root outranks a registry entry that
+/// names the same directory.
+pub fn standard_roots(options: &Options) -> Vec<SourceRoot> {
+    let mut roots = Vec::new();
+    if options.layers.state {
+        roots.extend(state_roots(options.state_path.as_deref()));
+    }
+    if options.layers.registry {
+        roots.extend(registry_roots());
+    }
+    if options.layers.volumes {
+        roots.extend(volume_roots().into_iter().map(|root| SourceRoot {
+            root,
+            registry_version: None,
+            source: Source::Volume,
+        }));
+    }
     roots
+}
+
+/// The root the state file remembered from an earlier run.
+///
+/// This is the most trusted layer that is not an explicit argument: a previous run
+/// decided this directory was the installation, so it is consulted before the registry
+/// even when the user moved the installation somewhere the registry does not know about.
+pub fn state_roots(path: Option<&Path>) -> Vec<SourceRoot> {
+    let path = match path {
+        Some(path) => path.to_path_buf(),
+        None => o824_state::data_root(None).join(o824_state::STATE_FILE_NAME),
+    };
+    let Ok(state) = o824_state::load(&path) else {
+        // A state file that cannot be read is not a reason to stop discovering.
+        return Vec::new();
+    };
+    state
+        .installs
+        .values()
+        .filter(|entry| !entry.root.trim().is_empty())
+        .map(|entry| SourceRoot {
+            root: entry.root.clone(),
+            registry_version: None,
+            source: Source::State,
+        })
+        .collect()
 }
 
 /// Cleans and trims roots, drops empty ones, removes duplicates in discovery
@@ -133,6 +254,7 @@ pub fn sorted_unique_roots(roots: Vec<SourceRoot>) -> Vec<SourceRoot> {
             registry_version: candidate
                 .registry_version
                 .map(|version| version.trim().to_owned()),
+            source: candidate.source,
         });
     }
 
@@ -297,6 +419,7 @@ fn install_location(
     Some(SourceRoot {
         root: location.to_owned(),
         registry_version: parse_display_name_version(&display_name),
+        source: Source::Registry,
     })
 }
 
@@ -456,19 +579,23 @@ mod tests {
             SourceRoot {
                 root: r"C:\b".to_owned(),
                 registry_version: None,
+                source: Source::Volume,
             },
             SourceRoot {
                 root: r"C:\a".to_owned(),
                 registry_version: None,
+                source: Source::Volume,
             },
             SourceRoot {
                 // A trailing separator and a different case are the same root.
                 root: r"c:\A\\".to_owned(),
                 registry_version: Some("1.0.0".to_owned()),
+                source: Source::Registry,
             },
             SourceRoot {
                 root: "   ".to_owned(),
                 registry_version: None,
+                source: Source::Scan,
             },
         ];
         let unique = sorted_unique_roots(roots);
@@ -490,6 +617,7 @@ mod tests {
             roots: Some(vec![PathBuf::from(r"C:\one")]),
             extra_dirs: vec![PathBuf::from(r"C:\two")],
             home: None,
+            ..Default::default()
         };
         let candidates = candidate_roots(&options);
         assert_eq!(candidates.len(), 2);
@@ -503,6 +631,7 @@ mod tests {
             roots: Some(Vec::new()),
             extra_dirs: Vec::new(),
             home: None,
+            ..Default::default()
         };
         assert!(candidate_roots(&options).is_empty());
     }
@@ -514,6 +643,7 @@ mod tests {
             roots: Some(vec![directory.path().to_path_buf()]),
             extra_dirs: Vec::new(),
             home: Some(directory.path().display().to_string()),
+            ..Default::default()
         };
         let installs = discover(&options).expect("discover");
         assert_eq!(installs.len(), 1);
@@ -532,6 +662,7 @@ mod tests {
             roots: Some(roots),
             extra_dirs: Vec::new(),
             home: None,
+            ..Default::default()
         };
         let installs = discover(&options).expect("discover");
         assert_eq!(installs.len(), 2);
@@ -552,9 +683,86 @@ mod tests {
             roots: Some(Vec::new()),
             extra_dirs: vec![missing.clone()],
             home: None,
+            ..Default::default()
         };
         let installs = discover(&options).expect("discover");
         assert_eq!(installs.len(), 1);
         assert_eq!(installs[0].health, HEALTH_DAMAGED);
+    }
+
+    #[test]
+    fn a_root_remembered_in_the_state_file_is_found_without_the_registry() {
+        let fixture = o824_fixtures::build("ok").expect("build the ok fixture");
+        let store = o824_fixtures::TempDir::new("o824-discovery-state-").expect("temp dir");
+        let state_path = store.path().join("state.json");
+        let mut state = o824_state::State::default();
+        state.record("local-1", fixture.root().display().to_string(), "desktop");
+        o824_state::save(&state_path, &state).expect("save the state file");
+
+        let options = Options {
+            roots: None,
+            extra_dirs: Vec::new(),
+            home: None,
+            layers: Layers {
+                state: true,
+                registry: false,
+                volumes: false,
+                process: false,
+                shortcut: false,
+                scan: false,
+            },
+            state_path: Some(state_path),
+            shortcut_dirs: Vec::new(),
+            scan_dirs: Vec::new(),
+        };
+
+        let candidates = candidate_roots(&options);
+        assert_eq!(candidates.len(), 1, "{candidates:?}");
+        assert_eq!(candidates[0].source, Source::State);
+        assert_eq!(
+            candidates[0].root,
+            o824_model::path::clean(fixture.root())
+                .display()
+                .to_string()
+        );
+
+        let installs = discover(&options).expect("discover");
+        assert_eq!(installs.len(), 1);
+        assert_eq!(installs[0].version, o824_fixtures::DSH_VERSION);
+    }
+
+    #[test]
+    fn the_earliest_layer_keeps_the_root_when_two_name_the_same_path() {
+        let fixture = o824_fixtures::build("ok").expect("build the ok fixture");
+        let store = o824_fixtures::TempDir::new("o824-discovery-state-").expect("temp dir");
+        let state_path = store.path().join("state.json");
+        let mut state = o824_state::State::default();
+        state.record("local-1", fixture.root().display().to_string(), "desktop");
+        o824_state::save(&state_path, &state).expect("save");
+
+        let options = Options {
+            roots: None,
+            extra_dirs: vec![fixture.root().to_path_buf()],
+            home: None,
+            layers: Layers {
+                state: true,
+                registry: false,
+                volumes: false,
+                process: false,
+                shortcut: false,
+                scan: false,
+            },
+            state_path: Some(state_path),
+            shortcut_dirs: Vec::new(),
+            scan_dirs: Vec::new(),
+        };
+
+        let candidates = candidate_roots(&options);
+        assert_eq!(candidates.len(), 1, "{candidates:?}");
+        assert_eq!(
+            candidates[0].source,
+            Source::State,
+            "the remembered root outranks the explicit duplicate that names the same path"
+        );
     }
 }
