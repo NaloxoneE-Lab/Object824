@@ -100,8 +100,12 @@ test('cancellation is sent, and an unsupporting kernel says so', skip, async () 
 test('a dead kernel rejects what was in flight, with a way forward', async () => {
   // A process that never speaks the protocol: every request stays pending until it
   // dies, which is exactly the state a crashed kernel leaves a UI in.
-  // A single process with no grandchildren: killing it must not leave a pipe open.
-  const client = connect({ command: 'ping', args: ['-n', '20', '127.0.0.1'] });
+  // Node itself, told to say nothing: a leaf process that is guaranteed to exist and
+  // to have no grandchildren, so killing it cannot leave a pipe open behind it.
+  const client = connect({
+    command: process.execPath,
+    args: ['-e', 'setTimeout(() => {}, 20000)'],
+  });
   const pending = client.request('o824.info');
   await client.kill();
   await assert.rejects(
