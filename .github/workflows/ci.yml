@@ -32,8 +32,16 @@ jobs:
             $failures = Select-String -Path test-output.txt -Pattern '^test .* FAILED$|^---- .* stdout ----$' |
               Select-Object -First 8
             foreach ($line in $failures) { Write-Output "::error::$($line.Line.Trim())" }
-            $panics = Select-String -Path test-output.txt -Pattern 'panicked at' | Select-Object -First 4
-            foreach ($line in $panics) { Write-Output "::error::$($line.Line.Trim())" }
+            # The panic's own message is the next line after 'panicked at'; without it
+            # a red run names the test and says nothing about why.
+            $lines = Get-Content test-output.txt
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+              if ($lines[$i] -match 'panicked at') {
+                $until = [Math]::Min($i + 3, $lines.Count - 1)
+                for ($j = $i; $j -le $until; $j++) { Write-Output "::error::$($lines[$j].Trim())" }
+                $i = $until
+              }
+            }
           }
           exit $code
 

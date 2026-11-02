@@ -345,4 +345,6 @@ mod tests {
         assert!(shortcut_roots(&[temp.path().to_path_buf()]).is_empty());
         assert!(shortcut_roots(&[temp.path().join("nope")]).is_empty());
     }
+
+
 }
