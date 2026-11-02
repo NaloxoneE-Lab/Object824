@@ -43,9 +43,14 @@ test('a path with spaces and non-ascii survives untouched', () => {
 });
 
 test('a windows path with backslashes is a path, not a name', () => {
-  const result = describeTranscript(['--transcript', 'D:\\work\\session.jsonl'], pkg);
-  assert.equal(result.preopen, resolve('D:\\work'));
-  assert.deepEqual(result.argv, ['--transcript', '/t/session.jsonl']);
+  const value = 'D:\\work\\session.jsonl';
+  const result = describeTranscript(['--transcript', value], pkg);
+  // Windows splits on the backslash; POSIX treats it as an ordinary character, where
+  // the whole tail is the file name. Both platforms must still recognise a path, and
+  // the guest path must be the basename of what this platform resolves.
+  const absolute = resolve(value);
+  assert.equal(result.preopen, dirname(absolute));
+  assert.deepEqual(result.argv, ['--transcript', `/t/${basename(absolute)}`]);
 });
 
 test('other flags pass through unchanged', () => {
