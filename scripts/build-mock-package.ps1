@@ -76,7 +76,9 @@ try {
 
   Write-Output '== checksums =='
   $sums = @()
-  foreach ($file in @($tgz, (Join-Path $dist 'o824-mock.exe'))) {
+  $assets = @($tgz)
+  if ($IsWindows) { $assets += $hostExe }
+  foreach ($file in $assets) {
     $hash = (Get-FileHash -Algorithm SHA256 -Path $file).Hash.ToLowerInvariant()
     $sums += "$hash  $(Split-Path -Leaf $file)"
   }

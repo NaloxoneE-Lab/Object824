@@ -11,7 +11,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { WASI } from 'node:wasi';
 
 import { describeTranscript, LauncherError, requireNode20 } from '../lib/launcher.mjs';
 
@@ -54,6 +53,17 @@ if (argv.includes('--help') || argv.includes('-h')) {
 const tooOld = requireNode20(process.versions.node);
 if (tooOld) fail(tooOld, 2);
 
+let WASI;
+try {
+  ({ WASI } = await import('node:wasi'));
+} catch (error) {
+  fail(
+    `o824-mock: this Node has no node:wasi module (${error.message}). ` +
+      'It runs the mock as WebAssembly, so it needs Node with WASI support.',
+    2,
+  );
+}
+
 let invocation;
 try {
   invocation = describeTranscript(argv, packageDir);
@@ -90,7 +100,11 @@ const wasi = new WASI({
 try {
   const module = new WebAssembly.Module(readFileSync(wasmPath));
   const instance = await WebAssembly.instantiate(module, wasi.getImportObject());
-  process.exit(wasi.start(instance));
+  // The exit code is set, not forced: process.exit() terminates with the guest's
+  // stdout writes possibly still queued, and on Windows that surfaces as a libuv
+  // assertion (UV_HANDLE_CLOSING) and exit code 127 on a large final frame. Letting
+  // the loop drain writes everything before the process ends.
+  process.exitCode = wasi.start(instance);
 } catch (error) {
   fail(`o824-mock: cannot run the WebAssembly module: ${error.message}`, 8);
 }

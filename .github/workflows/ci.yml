@@ -45,11 +45,20 @@ jobs:
   # an experimental API, so it is checked on the oldest supported Node and the newest
   # one rather than a single version: a break on either is a break for a UI developer.
   mock-package:
-    runs-on: windows-latest
+    # The package's claim is "no Windows needed", so the newest supported Node also runs
+    # on Linux: the WASI preopen mapping and the path rules are exactly what differs
+    # between the two, and a claim nothing tests is a guess.
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        node: [20, 24]
+        include:
+          - os: windows-latest
+            node: 20
+          - os: windows-latest
+            node: 24
+          - os: ubuntu-latest
+            node: 24
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -69,6 +78,15 @@ jobs:
         run: |
           node --test "packages/o824-mock/test/*.test.mjs" 2>&1 | Tee-Object -FilePath mock-test.txt
           $code = $LASTEXITCODE
+          # An unmatched pattern exits zero with zero tests, so the count is the check:
+          # "22 passed" and "nothing ran" must not look the same.
+          $passed = [int](Select-String -Path mock-test.txt -Pattern 'pass (\d+)' |
+            Select-Object -First 1 | ForEach-Object { $_.Matches[0].Groups[1].Value })
+          Write-Output "passing tests: $passed (at least 23 expected)"
+          if ($passed -lt 23) {
+            Write-Output "::error::only $passed tests ran; the suite did not execute"
+            $code = 1
+          }
           if ($code -ne 0) {
             Select-String -Path mock-test.txt -Pattern '^✖|^\s*not ok' |
               Select-Object -First 8 |

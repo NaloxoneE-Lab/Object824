@@ -31,10 +31,16 @@ The mock is a child process that speaks
 frames on stdin and writes server frames on stdout.
 
 ```js
+// Run the installed package directly through Node: no shell, so a transcript path
+// with spaces stays one argument, and no npx indirection, so the child is the process
+// you can kill. `npm i -D o824-mock` puts the file where this resolves it.
 import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
 
-const child = spawn('npx', ['-y', 'o824-mock', '--transcript', 'plan-apply'],
-                    { stdio: ['pipe', 'pipe', 'inherit'], shell: true });
+const require = createRequire(import.meta.url);
+const bin = require.resolve('o824-mock/bin/o824-mock.mjs');
+const child = spawn(process.execPath, [bin, '--transcript', 'plan-apply'],
+                    { stdio: ['pipe', 'pipe', 'inherit'] });
 
 let buffer = Buffer.alloc(0);
 const replies = new Map();
@@ -64,7 +70,11 @@ const send = (method, params) => new Promise((resolve) => {
 
 await send('o824.info', { clientProtocol: '0.1.0' });
 const discover = await send('o824.discover');
-console.log(discover.result.installs);
+console.log('installs:', JSON.stringify(discover.result.installs));
+
+// Closing stdin is what tells the mock the session is over; otherwise it waits for
+// more client frames, which is what a long-running kernel would do.
+child.stdin.end();
 ```
 
 **The same client code drives the real kernel**: replace the command with `o824` and
@@ -81,7 +91,7 @@ point it at a machine with DSH.
 | `--protocol <ver>` | Report this `protocolVersion` from `o824.info` instead of the recorded one, to test negotiation. |
 
 Exit codes: `0` the client ended the session, `2` the command line was unusable, `8`
-the recording could not be read.
+the mock could not run — usually a recording it cannot read, or a missing module.
 
 Requests are matched **by method**, not by position. Each recorded answer is used once,
 in recorded order; asking for a method more times than the recording holds keeps

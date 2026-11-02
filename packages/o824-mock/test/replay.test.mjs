@@ -9,7 +9,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -43,7 +44,7 @@ function ensureArtifacts() {
 const missing = ensureArtifacts();
 // `{ skip: null }` is not the same as no options in every runner version, so the
 // options object is built explicitly.
-const options = missing ? options : {};
+const options = missing ? { skip: missing } : {};
 
 function splitRecording(text) {
   const requests = [];
@@ -122,14 +123,22 @@ test('an unknown recording is a usage error with the list', options, () => {
   assert.match(result.stderr, /doctor-clean/);
 });
 
-test('a transcript path with spaces is passed through untouched', options, () => {
+test('a transcript path with a space and non-ascii characters is passed through', options, () => {
   const { requests, recorded } = splitRecording(
     readFileSync(join(SPEC, 'doctor-clean.jsonl'), 'utf8'),
   );
-  const spaced = join(repoRoot, 'spec', 'transcripts', 'doctor-clean.jsonl');
-  const result = run(['--transcript', spaced], requests);
-  assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(frames(result.stdout), recorded);
+  // The interesting path is one that actually contains a space and non-ASCII bytes:
+  // a repository checkout under a plain ASCII path proves neither.
+  const directory = mkdtempSync(join(tmpdir(), 'o824 mock 录制-'));
+  try {
+    const spaced = join(directory, 'session one.jsonl');
+    writeFileSync(spaced, readFileSync(join(SPEC, 'doctor-clean.jsonl')));
+    const result = run(['--transcript', spaced], requests);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(frames(result.stdout), recorded);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('a closed input does not crash the process', options, () => {
@@ -156,8 +165,36 @@ test('a transcript that is not there is named in the error', options, () => {
   assert.ok(!result.stderr.includes('    at '));
 });
 
+test('a large frame is replayed whole, every time', options, () => {
+  // A plan result carries a fingerprint and a step table, so a real recording can
+  // hold a frame of hundreds of kilobytes. The replayer must emit it completely —
+  // and the process must not exit while that write is still queued.
+  const padding = 'x'.repeat(200 * 1024);
+  const directory = mkdtempSync(join(tmpdir(), 'o824-large-frame-'));
+  try {
+    const path = join(directory, 'large.jsonl');
+    writeFileSync(
+      path,
+      [
+        JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'o824.info' }),
+        JSON.stringify({ jsonrpc: '2.0', id: 1, seq: 1, result: { protocolVersion: '0.1.0', pad: padding } }),
+      ].join('\n') + '\n',
+    );
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const result = run(['--transcript', path], [{ jsonrpc: '2.0', id: 1, method: 'o824.info' }]);
+      assert.equal(result.status, 0, `attempt ${attempt}: ${result.stderr}`);
+      const answered = frames(result.stdout);
+      assert.equal(answered.length, 1, `attempt ${attempt}: ${answered.length} frames`);
+      assert.equal(answered[0].result.pad.length, padding.length, `attempt ${attempt}: truncated`);
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('the wasm and the host binary agree', options, () => {
-  const hostBinary = join(repoRoot, 'target', 'release', 'o824-mock.exe');
+  const hostBinary = join(repoRoot, 'target', 'release',
+    process.platform === 'win32' ? 'o824-mock.exe' : 'o824-mock');
   if (!existsSync(hostBinary)) {
     return; // The host build is packaging's job, not this test's.
   }

@@ -70,7 +70,7 @@ try {
   // arguments. A relative name inside the work directory has neither problem.
   copyFileSync(resolve(tarball), join(work, basename(tarball)));
 
-  const installed = spawnSync('npm', ['i', '-D', './' + basename(tarball)], {
+  const installed = spawnSync('npm', ['i', '-D', '--no-audit', '--no-fund', '--prefer-offline', './' + basename(tarball)], {
     cwd: work,
     shell: true,
     encoding: 'utf8',
@@ -90,6 +90,23 @@ try {
   check('it answers the recording frame for frame',
     JSON.stringify(answered) === JSON.stringify(recorded),
     `got ${answered.length} frames, expected ${recorded.length}`);
+
+  // The README's example is the code people copy, so it is the code this checks:
+  // the fenced block is extracted verbatim and run against the installed package.
+  const readme = readFileSync(join(repoRoot, 'packages', 'o824-mock', 'README.md'), 'utf8');
+  const block = readme.split('```js')[1];
+  if (!block) {
+    check('the README carries a runnable client example', false, 'no ```js block');
+  } else {
+    const example = join(work, 'example.mjs');
+    writeFileSync(example, block.slice(0, block.indexOf('```')));
+    const ranExample = spawnSync(process.execPath, [example], { cwd: work, encoding: 'utf8' });
+    check(
+      'the README client example runs and exits',
+      ranExample.status === 0 && /installs:/.test(ranExample.stdout ?? ''),
+      `exit ${ranExample.status}: ${(ranExample.stderr ?? '').slice(0, 300)}`,
+    );
+  }
 
   const failed = spawnSync('npx', ['o824-mock', '--transcript', 'no-such-recording'], {
     cwd: work,
