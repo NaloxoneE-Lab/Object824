@@ -1,0 +1,15 @@
+{
+  "name": "o824-mock",
+  "version": "0.0.0",
+  "description": "Replays a recorded O824 session so a UI can be built without DSH, without a broken machine, and without Windows.",
+  "type": "module",
+  "bin": { "o824-mock": "bin/o824-mock.mjs" },
+  "files": ["bin", "lib", "o824-mock.wasm", "transcripts", "README.md"],
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\"",
+    "prepack": "node scripts/require-wasm.mjs"
+  },
+  "engines": { "node": ">=20" },
+  "license": "MIT",
+  "keywords": ["dsh", "deepseek-harness", "mock", "json-rpc", "lsp"]
+}
