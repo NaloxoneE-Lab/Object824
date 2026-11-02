@@ -24,6 +24,18 @@
 
 **不包含**：P1 的剩余功能（发现算法补层、形态适配、共存检测）。那些在"迁移完成"之后直接在 Rust 侧做——**不要一边迁一边加功能**，那会让"行为等价"这个判据失效。
 
+### P1 在建项（迁移之后，直接在 Rust 侧做）
+
+| 项 | 状态 | 判据 |
+|---|---|---|
+| `o824-mock` npm 包（WASI，跨平台） | ✅ 2026-11-02 | `packages/o824-mock` 的 Node 用例全绿 + CI `mock-package` 在 Node 20/24 上绿 + 装 tarball 后能回放三个录制 |
+| 发现算法补层（§7.7 第 1/4/5/6 层） | ⬜ | 每层都要有"找到 / 找不到"两种树上的用例 |
+| 形态适配（desktop / web，含 F11 版本漂移） | ⬜ | 两种形态各自的 `discover` / `doctor` 用例 |
+| 共存检测（并发实例、端口残留、版本漂移） | ⬜ | 见设计文档 §21.4；端口与进程那一半依赖 P2 的 start/stop |
+
+设计见 [`docs/design/o824-mock-package.md`](design/o824-mock-package.md)，用户文档见
+[`packages/o824-mock/README.md`](../packages/o824-mock/README.md)。
+
 ---
 
 ## 二、五个里程碑
