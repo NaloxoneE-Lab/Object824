@@ -40,3 +40,57 @@ jobs:
       - name: Golden conformance
         run: cargo test -p o824-conformance -- --nocapture
       - run: cargo build --release --bin o824
+
+  # The npm package runs the same replayer as WebAssembly under Node. Node's WASI is
+  # an experimental API, so it is checked on the oldest supported Node and the newest
+  # one rather than a single version: a break on either is a break for a UI developer.
+  mock-package:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build the package
+        shell: pwsh
+        run: pwsh -File scripts/build-mock-package.ps1
+
+      - name: Test the package
+        shell: pwsh
+        run: |
+          node --test "packages/o824-mock/test/*.test.mjs" 2>&1 | Tee-Object -FilePath mock-test.txt
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            Select-String -Path mock-test.txt -Pattern '^✖|^\s*not ok' |
+              Select-Object -First 8 |
+              ForEach-Object { Write-Output "::error::$($_.Line.Trim())" }
+          }
+          exit $code
+
+      # The tarball is what a developer installs, so it is installed here: a package
+      # that tests green but cannot be installed would be found by a user instead.
+      - name: Install the tarball and replay a recording
+        shell: pwsh
+        run: |
+          $work = Join-Path $env:RUNNER_TEMP "mock-install"
+          New-Item -ItemType Directory -Force -Path $work | Out-Null
+          Push-Location $work
+          try {
+            '{ "name": "consumer", "private": true }' | Set-Content package.json
+            $tgz = Get-ChildItem (Join-Path $env:GITHUB_WORKSPACE "dist") -Filter "o824-mock-*.tgz" |
+              Select-Object -First 1
+            npm i -D $tgz.FullName
+            if ($LASTEXITCODE -ne 0) { throw "npm i failed" }
+            $result = npx o824-mock --transcript doctor-clean 2>&1
+            if ($LASTEXITCODE -ne 0) { throw "npx o824-mock failed: $result" }
+          }
+          finally { Pop-Location }
