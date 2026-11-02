@@ -1,5 +1,7 @@
 # o824-rs
 
+[![ci](https://github.com/NaloxoneE-Lab/Object824/actions/workflows/ci.yml/badge.svg)](https://github.com/NaloxoneE-Lab/Object824/actions/workflows/ci.yml)
+
 O824 内核的 Rust 实现。**Go 版（`D:\dsh work\Object 824`，tag `v0-go-reference`）是参考实现/oracle**：它已冻结，不再加功能，但保持可编译可运行，用来在两边行为不一致时判定谁对。
 
 ## 这是什么

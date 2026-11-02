@@ -68,7 +68,7 @@ o824 0.1.0 (commit f4c7751, built 2026-11-01T19:59:48Z) windows/amd64
 | 2 | 协议等价：3 个 transcript 逐帧通过 | ✅ |
 | 3 | 真机等价：实验室故障 `doctor → repair → doctor` 一致 | ✅ 6/6 场景（实验室提供的全部场景） |
 | 4 | 可发布：单 exe，干净 Windows 上六个子命令 | ✅ 本机实测；**"干净 Windows"未验**（见下） |
-| 5 | 可维护：CI 全绿且真在 GitHub 跑过 | ⚠️ **CI 从未在 GitHub 上跑过**（仓库没有远端） |
+| 5 | 可维护：CI 全绿且真在 GitHub 跑过 | ✅ [run 41392699018](https://github.com/NaloxoneE-Lab/Object824/actions/runs/41392699018)，八步全过，158 秒 |
 
 ## 补记（v0.1.1）：`--with-install` 已实现并真机验证
 
@@ -94,8 +94,19 @@ the journal records the step note  PASS
 
 ## 明确未做
 
-1. **CI 没有远端可跑**。`.github/workflows/ci.yml` 就位，但仓库至今没有 GitHub 远端。这是唯一一条从 G0 悬到现在的判据。
+1. ~~CI 没有远端可跑~~ —— **已完成**，见下面的补记。
 3. **"干净 Windows"冒烟**：本机就是唯一验证过的机器（Windows，无 MSVC，`windows-gnu` 宿主）。
 4. **P1 剩余项**（发现算法补层、形态适配、共存检测）：按路线图，迁移完成之后才做。
 
 **这四条都不影响 G0–G4 的机器判据**，但第 1 条是路线图写明的"迁移完成"定义之一，所以这里如实标成未完成，而不是用"CI 文件写好了"糊过去。
+
+## 补记（2026-11-02）：CI 在 GitHub 上真跑起来了
+
+仓库：<https://github.com/NaloxoneE-Lab/Object824>。首推之后 CI 立刻跑，**头两次都是红的**，而且两次都是真问题：
+
+1. **脱敏表不认识 8.3 短名**。CI runner 的 `%USERPROFILE%` 是长名（`runneradmin`），`%TEMP%` 却是短名（`RUNNER~1`），只按长名建表会漏掉短名的路径。现在每个路径都会向 Windows 问一次短名与长名，两个拼写都进替换表；并把那条"包里不许出现 AppData"的断言改成按**契约**断言（安装根、DSH home、`%USERPROFILE%` 的任何拼写都不许出现）——原来的写法会被一个合法的临时路径误伤。
+2. **两个测试在断言开发机，而不是被测的树**。它们调 `discovery::validate`，而它会按 CLI 的规则解析 **默认 home**（`O824_HOME` → `DSH_HOME` → `%USERPROFILE%\.dsh`）。本机恰好有 `desktop` profile 所以一直绿；CI 上没有 `~/.dsh`，profile 列表为空，断言就失败。改成 `validate_with(树, 树, None)`——fixture 树本来就是自己的 home。顺带把快照拷贝里"为了拿版本号而 validate 整棵树"改成直接读版本。
+
+为了让失败**不需要 token 就能定位**，测试步骤现在会把失败用例名和 panic 行打成 workflow annotation（公开的 checks API 可读）。第一次红的时候，annotation 直接给出了两个测试名——没有它，我只有一句 `exit code 1`。
+
+现在：**八步全过**（fmt / clippy `-D warnings` / test / conformance / release build / 缓存 / checkout），158 秒，MSVC 宿主。这是路线图里"迁移完成"定义的最后一条。

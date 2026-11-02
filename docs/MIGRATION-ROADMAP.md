@@ -159,9 +159,9 @@ C    golden fixtures 八棵树 ──  verify  snapshot  cli  mock ──  diagn
 
 状态只有三种：⬜ 未开始 / 🟡 进行中 / ✅ 门已过。**"写完了但门没过"不算 ✅。**
 
-> **2026-11-02：G0–G5 全部通过。** 18+1 个 crate 里只剩 `--with-install`（副本安装）没有实现，
-> 它明确返回 `E_UNSUPPORTED`。迁移完成定义里的第 5 条（CI 真在 GitHub 上跑过）仍未满足：
-> 仓库没有远端。详见 `M5-REPORT.md`。
+> **2026-11-02：迁移完成。** G0–G5 全部通过，`--with-install`（v0.1.1）已实现并真机验收，
+> CI 在 GitHub 上真跑过（[run 41392699018](https://github.com/NaloxoneE-Lab/Object824/actions/runs/41392699018)，
+> 八步全过）。仓库：<https://github.com/NaloxoneE-Lab/Object824>。详见 `M5-REPORT.md`。
 
 > 表里少一行 `o824`（bin）——它永远只是把参数转给 `o824-cli`，没有自己的里程碑。
 > 另：`MIGRATION-RUST.md` 列了 16 个 crate，实际是 **19 个**：多了 `o824-version`（`week1/04`）、`o824-conformance`（`week1/03`，只含测试）和 `o824-yaml`（M1 加的，理由见 `M1-REPORT.md`）。这不是漂移，是两份文档的口径差，以仓库为准。
