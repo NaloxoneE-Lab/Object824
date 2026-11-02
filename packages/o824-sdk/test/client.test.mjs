@@ -106,12 +106,15 @@ test('a dead kernel rejects what was in flight, with a way forward', async () =>
     command: process.execPath,
     args: ['-e', 'setTimeout(() => {}, 20000)'],
   });
-  const pending = client.request('o824.info');
-  await client.kill();
-  await assert.rejects(
-    pending,
+  // The handler is attached before the process is killed, not after: a rejection that
+  // lands while nothing is listening is an unhandled rejection, and on Linux the child
+  // dies fast enough for that race to happen every time.
+  const rejected = assert.rejects(
+    client.request('o824.info'),
     (error) => error instanceof ConnectionClosedError && /connect again/.test(error.message),
   );
+  await client.kill();
+  await rejected;
 });
 
 test('plan and apply carry their recorded results', skip, async () => {
