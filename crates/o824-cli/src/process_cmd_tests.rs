@@ -266,6 +266,41 @@ fn a_running_desktop_instance_is_named_before_a_second_form_starts() {
     assert!(warning.contains("same sessions"), "{warning}");
 }
 
+/// `--all` stops what this kernel started, forgets records whose process is gone, and
+/// leaves anything it did not start alone.
+#[test]
+fn stop_all_stops_what_was_started_and_forgets_what_is_gone() {
+    let temp = o824_fixtures::TempDir::new("o824-stop-all-").expect("temp dir");
+    let mut running = spawn_stand_in();
+    let image = image_of_stand_in(&mut running);
+    let mut stale_record = record_for("web-stale", 0x7fff_fffe, r"C:\nowhere\node.exe", "D:\\home");
+    stale_record.created = 1;
+
+    let mut state = State::default();
+    state.remember_process(record_for("web-live", running.id(), &image, "D:\\home"));
+    state.remember_process(stale_record);
+    let path = temp.path().join(o824_state::STATE_FILE_NAME);
+    o824_state::save(&path, &state).expect("save");
+
+    let root = temp.path().display().to_string();
+    let (code, stdout, stderr) = run(crate::process_cmd::stop, &["--all", "--data-root", &root]);
+
+    let alive = running.try_wait().expect("try_wait").is_none();
+    let _ = running.kill();
+    let _ = running.wait();
+
+    assert_eq!(code, 0, "{stderr}");
+    assert!(!alive, "the live process is stopped: {stdout}");
+    assert!(stdout.contains("stopped web-live"), "{stdout}");
+
+    let after = o824_state::load(&path).expect("load");
+    assert!(
+        after.processes.is_empty(),
+        "both records are gone: {:?}",
+        after.processes
+    );
+}
+
 /// The image of the spawned stand-in, read after it is surely running.
 fn image_of_stand_in(child: &mut std::process::Child) -> String {
     for _ in 0..50 {

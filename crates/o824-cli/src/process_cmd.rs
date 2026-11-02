@@ -20,6 +20,7 @@ pub const USAGE: &str = "\
 Usage:
   o824 start  --install <id> [--port <n>] [--json]
   o824 stop   --install <id> [--json]
+  o824 stop   --all
   o824 status [--json]
   o824 logs   --install <id> [--tail <lines>]
 
@@ -200,6 +201,7 @@ pub fn start(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
 pub fn stop(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
     let mut flags = FlagSet::new(vec![
         FlagSpec::boolean("json"),
+        FlagSpec::boolean("all"),
         FlagSpec::valued("install"),
         FlagSpec::valued("home"),
         FlagSpec::valued("data-root"),
@@ -208,8 +210,15 @@ pub fn stop(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> 
         let _ = writeln!(stderr, "{error}");
         return exit_code_of(Some(&error));
     }
+
+    // `--all` stops everything this kernel started, which is what a person means after
+    // a session went wrong. It needs no home: each record already carries its own.
+    if flags.flag("all") {
+        return stop_all(flags.value("data-root").map(PathBuf::from), stdout, stderr);
+    }
+
     let Some(context) = context_from(&mut flags) else {
-        let error = Error::new(Code::Usage, "o824 stop: pass --root");
+        let error = Error::new(Code::Usage, "o824 stop: pass --home (or --all)");
         let _ = writeln!(stderr, "{error}");
         return exit_code_of(Some(&error));
     };
@@ -274,6 +283,54 @@ pub fn stop(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> 
         );
     } else {
         let _ = writeln!(stdout, "stopped {install_id} (pid {})", record.pid);
+    }
+    EXIT_OK
+}
+
+/// `o824 stop --all`: every process this kernel started.
+fn stop_all(data_root: Option<PathBuf>, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
+    let data_root = data_root.unwrap_or_else(|| o824_state::data_root(None));
+    let state_path = data_root.join(o824_state::STATE_FILE_NAME);
+    let mut state = match o824_state::load(&state_path) {
+        Ok(state) => state,
+        Err(error) => {
+            let _ = writeln!(stderr, "{error}");
+            return exit_code_of(Some(&error));
+        }
+    };
+
+    let mut stopped = 0usize;
+    let mut refused = 0usize;
+    let ids: Vec<String> = state.processes.keys().cloned().collect();
+    for install_id in ids {
+        let Some(record) = state.processes.get(&install_id).cloned() else {
+            continue;
+        };
+        // A record whose process is already gone is not a failure: it is the common
+        // case after a crash, and the record is simply stale.
+        if !is_alive(&record) {
+            state.forget_process(&install_id);
+            continue;
+        }
+        match o824_webform::stop(&record) {
+            Ok(()) => {
+                stopped += 1;
+                let _ = writeln!(stdout, "stopped {install_id} (pid {})", record.pid);
+                state.forget_process(&install_id);
+            }
+            Err(error) => {
+                refused += 1;
+                let _ = writeln!(stderr, "{error}");
+            }
+        }
+    }
+
+    if let Err(error) = o824_state::save(&state_path, &state) {
+        let _ = writeln!(stderr, "{error}");
+        return exit_code_of(Some(&error));
+    }
+    if stopped == 0 && refused == 0 {
+        let _ = writeln!(stdout, "nothing running");
     }
     EXIT_OK
 }
