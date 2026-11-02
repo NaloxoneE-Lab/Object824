@@ -71,7 +71,14 @@ jobs:
 
       - name: Build the package
         shell: pwsh
-        run: pwsh -File scripts/build-mock-package.ps1
+        run: |
+          pwsh -File scripts/build-mock-package.ps1 2>&1 | Tee-Object -FilePath build-mock.txt
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            # The job log needs an authenticated download; annotations do not.
+            Get-Content build-mock.txt -Tail 12 | ForEach-Object { Write-Output "::error::$_" }
+          }
+          exit $code
 
       - name: Test the package
         shell: pwsh

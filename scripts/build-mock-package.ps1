@@ -26,7 +26,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Push-Location $root
 try {
-  $packageDir = Join-Path $root 'packages\o824-mock'
+  $packageDir = Join-Path (Join-Path $root 'packages') 'o824-mock'
   $manifestPath = Join-Path $packageDir 'package.json'
   $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
   if (-not $Version) { $Version = $manifest.version }
@@ -39,7 +39,7 @@ try {
   # The toolchain is self-contained; a plain `pwsh` has no cargo on PATH.
   $cargo = (Get-Command cargo -ErrorAction SilentlyContinue).Source
   if (-not $cargo) {
-    $candidate = Join-Path $root '.toolchain\cargo\bin\cargo.exe'
+    $candidate = Join-Path (Join-Path (Join-Path (Join-Path $root '.toolchain') 'cargo') 'bin') 'cargo.exe'
     if (Test-Path $candidate) { $cargo = $candidate } else { throw 'cargo not found (run scripts/env.ps1 first)' }
   }
 
@@ -49,19 +49,19 @@ try {
   Write-Output '== building the host binary =='
   & $cargo build --release -p o824-mock --bin o824-mock
   if ($LASTEXITCODE -ne 0) { throw 'cargo build (host) failed' }
-  Copy-Item (Join-Path $root 'target\release\o824-mock.exe') (Join-Path $dist 'o824-mock.exe') -Force
+  Copy-Item (Join-Path (Join-Path (Join-Path $root 'target') 'release') 'o824-mock.exe') (Join-Path $dist 'o824-mock.exe') -Force
 
   Write-Output '== building the wasm module =='
   & $cargo build --release -p o824-mock --bin o824-mock --target wasm32-wasip1
   if ($LASTEXITCODE -ne 0) { throw 'cargo build (wasm32-wasip1) failed' }
-  $builtWasm = Join-Path $root 'target\wasm32-wasip1\release\o824-mock.wasm'
+  $builtWasm = Join-Path (Join-Path (Join-Path (Join-Path $root 'target') 'wasm32-wasip1') 'release') 'o824-mock.wasm'
   if (-not (Test-Path $builtWasm)) { throw "the wasm build produced no $builtWasm" }
   Copy-Item $builtWasm (Join-Path $packageDir 'o824-mock.wasm') -Force
 
   Write-Output '== copying the recordings =='
   $transcripts = Join-Path $packageDir 'transcripts'
   New-Item -ItemType Directory -Force -Path $transcripts | Out-Null
-  Copy-Item (Join-Path $root 'spec\transcripts\*.jsonl') $transcripts -Force
+  Copy-Item (Join-Path (Join-Path (Join-Path $root 'spec') 'transcripts') '*.jsonl') $transcripts -Force
 
   Write-Output '== packing =='
   Push-Location $packageDir
