@@ -9,3 +9,11 @@
 # The YAML spike is its own workspace; its build products are not the project's.
 /spikes/*/target/
 /spikes/*/Cargo.lock
+
+# The mock package's build products. The wasm module is rebuilt by
+# scripts/build-mock-package.ps1 and shipped as a release asset: a binary in the
+# repository drifts from the source that should have rebuilt it, which is exactly how
+# a stale o824.exe once turned eight green golden files red.
+/packages/o824-mock/o824-mock.wasm
+/packages/o824-mock/transcripts/
+/dist/
