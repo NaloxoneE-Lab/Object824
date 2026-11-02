@@ -245,6 +245,33 @@ pub fn stop(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> 
         return EXIT_OK;
     };
 
+    // Two states look alike and mean opposite things. A pid with no process is the
+    // normal state after a crash: the desired state is already reached, and the stale
+    // record should go. A pid that now belongs to something else is the dangerous one:
+    // the record is the only evidence we started something here, so it is kept and the
+    // stop is refused.
+    if o824_webform::image_of(record.pid).is_none() {
+        state.forget_process(&install_id);
+        if let Err(error) = o824_state::save(&state_path, &state) {
+            let _ = writeln!(stderr, "{error}");
+            return exit_code_of(Some(&error));
+        }
+        if flags.flag("json") {
+            let _ = writeln!(
+                stdout,
+                "{}",
+                serde_json::json!({ "stopped": false, "reason": "already stopped", "pid": record.pid })
+            );
+        } else {
+            let _ = writeln!(
+                stdout,
+                "{install_id} was already stopped (pid {})",
+                record.pid
+            );
+        }
+        return EXIT_OK;
+    }
+
     if let Err(error) = o824_webform::stop(&record) {
         let _ = writeln!(stderr, "{error}");
         return exit_code_of(Some(&error));

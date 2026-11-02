@@ -429,6 +429,30 @@ fn child_id_hint() -> String {
     "pid=".to_owned()
 }
 
+/// A record whose process is already gone — the state after a crash — is not a failure
+/// to stop: the desired state is reached, and the stale record goes away.
+#[test]
+fn stop_of_an_already_dead_record_succeeds_and_cleans_up() {
+    let temp = o824_fixtures::TempDir::new("o824-stop-dead-").expect("temp dir");
+    let mut record = record_for("web", 0x7fff_fffe, r"C:\nowhere\node.exe", "D:\\home");
+    record.created = 1;
+    state_at(temp.path(), Some(record));
+
+    let root = temp.path().display().to_string();
+    let home = temp.path().join("home").display().to_string();
+    let (code, stdout, stderr) = run(
+        crate::process_cmd::stop,
+        &["--install", "web", "--home", &home, "--data-root", &root],
+    );
+
+    assert_eq!(code, 0, "{stderr}");
+    assert!(stdout.contains("already stopped"), "{stdout}");
+
+    let after = o824_state::load(&std::path::Path::new(&root).join(o824_state::STATE_FILE_NAME))
+        .expect("load");
+    assert!(after.processes.is_empty(), "the stale record is gone");
+}
+
 /// The image of the spawned stand-in, read after it is surely running.
 fn image_of_stand_in(child: &mut std::process::Child) -> String {
     for _ in 0..50 {
