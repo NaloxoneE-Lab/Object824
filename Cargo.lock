@@ -180,6 +180,9 @@ name = "o824"
 version = "0.1.0"
 dependencies = [
  "o824-cli",
+ "o824-fixtures",
+ "o824-protocol",
+ "serde_json",
 ]
 
 [[package]]
@@ -210,6 +213,7 @@ dependencies = [
  "o824-discovery",
  "o824-errs",
  "o824-fixtures",
+ "o824-kernel",
  "o824-lock",
  "o824-mock",
  "o824-model",
@@ -288,6 +292,23 @@ dependencies = [
 name = "o824-fixtures"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
+]
+
+[[package]]
+name = "o824-kernel"
+version = "0.1.0"
+dependencies = [
+ "o824-apply",
+ "o824-discovery",
+ "o824-errs",
+ "o824-fixtures",
+ "o824-model",
+ "o824-plan",
+ "o824-protocol",
+ "o824-state",
+ "o824-verify",
+ "o824-version",
  "serde_json",
 ]
 

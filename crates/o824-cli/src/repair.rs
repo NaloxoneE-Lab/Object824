@@ -193,7 +193,7 @@ pub fn run_with(
                 after.findings.len()
             );
             for finding in &after.findings {
-                let _ = writeln!(stdout, "  {}", crate::render::format_finding(finding));
+                let _ = writeln!(stdout, "{}", crate::render::format_finding(finding));
             }
         }
     }

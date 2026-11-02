@@ -16,6 +16,7 @@ pub mod discover;
 pub mod doctor;
 pub mod flags;
 pub mod install;
+pub mod kernel_cmd;
 pub mod mock_cmd;
 pub mod render;
 pub mod repair;
@@ -92,10 +93,11 @@ pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i
         "snapshot" => snapshot_cmd::run(&args[1..], stdout, stderr),
         "mock" => mock_cmd::run(&args[1..], stdout, stderr),
         "diagnose" => diagnose_cmd::run(&args[1..], stdout, stderr),
+        "kernel" => kernel_cmd::run(&args[1..], stderr),
         other => {
             let _ = writeln!(
                 stderr,
-                "o824: unknown command {other:?} (available in this build: diagnose, discover, doctor, mock, repair, rollback, snapshot)"
+                "o824: unknown command {other:?} (available in this build: diagnose, discover, doctor, kernel, mock, repair, rollback, snapshot)"
             );
             EXIT_USAGE
         }

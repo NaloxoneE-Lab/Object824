@@ -13,3 +13,8 @@ path = "src/main.rs"
 
 [dependencies]
 o824-cli.workspace = true
+
+[dev-dependencies]
+o824-fixtures.workspace = true
+o824-protocol.workspace = true
+serde_json.workspace = true
