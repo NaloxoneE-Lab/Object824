@@ -91,18 +91,34 @@ export class KernelClient {
   private readonly decoder = new FrameDecoder();
   private readonly pending = new Map<number, Pending>();
   private readonly listeners = new Set<(event: JobEvent) => void>();
+  /**
+   * Events that arrived before anyone asked for them.
+   *
+   * A kernel may answer `o824.doctor` and emit the whole job — progress, result, done —
+   * in one write. The promise for the answer resolves in a microtask, so by the time a
+   * caller says "now wait for the job" the result is already gone. Buffering is not an
+   * optimisation here; without it every fast job hangs.
+   */
+  private readonly jobEvents = new Map<string, JobEvent[]>();
   private nextId = 1;
   private closed = false;
   private readonly requestTimeoutMs: number;
-  /** Resolves once the process is gone, whenever it goes. Created up front for a
-   * reason: attaching a listener after `kill()` can miss the exit and then wait for
-   * an event that already happened. */
+  /**
+   * Resolves once the process is gone *and its pipes are closed*.
+   *
+   * `exit` fires before the stdio streams finish closing, so waiting for it leaves
+   * handles behind — which in a long-lived process is a leak and in a test runner is a
+   * hang. `close` is the event that means "nothing of this child is left".
+   *
+   * It is created with the child, not when someone asks: attaching a listener after
+   * `kill()` can miss an exit that already happened and then wait for ever.
+   */
   private readonly exited: Promise<number | null>;
 
   constructor(child: ChildProcessWithoutNullStreams, requestTimeoutMs = 0) {
     this.child = child;
     this.requestTimeoutMs = requestTimeoutMs;
-    this.exited = new Promise<number | null>((resolve) => child.once('exit', (code) => resolve(code)));
+    this.exited = new Promise<number | null>((resolve) => child.once('close', (code) => resolve(code)));
 
     child.stdout.on('data', (chunk: Buffer) => this.onData(chunk));
     // The kernel's stderr is diagnostics, never protocol (§7.5).
@@ -239,20 +255,43 @@ export class KernelClient {
   /** Resolves with a job's `op.result`, rejects when it fails or the process dies. */
   private waitForJob(jobId: string): Promise<unknown> {
     return new Promise<unknown>((resolve, reject) => {
+      let settled = false;
+      const settle = (finish: () => void) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        this.jobEvents.delete(jobId);
+        finish();
+      };
+      const handle = (event: JobEvent) => {
+        if (event.kind === 'result') {
+          settle(() => resolve(event.result));
+        } else if (event.kind === 'state' && event.state?.state === 'failed') {
+          const error = event.state.error;
+          settle(() =>
+            reject(new RpcError({ code: -32000, message: error?.message ?? 'the job failed', data: error })),
+          );
+        } else if (event.kind === 'state' && event.state?.state === 'cancelled') {
+          settle(() => reject(new Error(`${jobId}: cancelled`)));
+        }
+      };
+
+      // Replay what arrived before this call: a fast job may already be over.
+      for (const event of this.jobEvents.get(jobId) ?? []) {
+        handle(event);
+      }
+      if (settled) {
+        return;
+      }
+
       const stop = this.on((event) => {
         if (event.jobId !== jobId) {
           return;
         }
-        if (event.kind === 'result') {
+        handle(event);
+        if (settled) {
           stop();
-          resolve(event.result);
-        } else if (event.kind === 'state' && event.state?.state === 'failed') {
-          stop();
-          const error = event.state.error;
-          reject(new RpcError({ code: -32000, message: error?.message ?? 'the job failed', data: error }));
-        } else if (event.kind === 'state' && event.state?.state === 'cancelled') {
-          stop();
-          reject(new Error(`${jobId}: cancelled`));
         }
       });
     });
@@ -316,6 +355,20 @@ export class KernelClient {
     } else {
       event.result = params as unknown as JobResult;
     }
+    // Keep the event for a caller that has not asked for it yet; bounded, because a
+    // long session with many jobs must not grow without limit.
+    const buffered = this.jobEvents.get(jobId) ?? [];
+    buffered.push(event);
+    this.jobEvents.delete(jobId);
+    this.jobEvents.set(jobId, buffered);
+    while (this.jobEvents.size > 64) {
+      const oldest = this.jobEvents.keys().next();
+      if (oldest.done) {
+        break;
+      }
+      this.jobEvents.delete(oldest.value);
+    }
+
     for (const listener of this.listeners) {
       listener(event);
     }

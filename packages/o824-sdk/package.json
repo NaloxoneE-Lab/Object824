@@ -17,7 +17,7 @@
   ],
   "scripts": {
     "build": "tsc --project tsconfig.json",
-    "test": "node --test \"test/*.test.mjs\"",
+    "test": "node --test test/frames.test.mjs test/client.test.mjs test/contract.test.mjs",
     "prepack": "node scripts/require-build.mjs"
   },
   "engines": {

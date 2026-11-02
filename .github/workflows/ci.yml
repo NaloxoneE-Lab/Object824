@@ -171,7 +171,10 @@ jobs:
         shell: pwsh
         working-directory: packages/o824-sdk
         run: |
-          node --test "test/*.test.mjs" 2>&1 | Tee-Object -FilePath sdk-test.txt
+          # Named explicitly: Node 20 does not expand a glob for --test, and an
+          # unmatched pattern exits zero having run nothing.
+          $files = Get-ChildItem test -Filter *.test.mjs | ForEach-Object { $_.FullName }
+          node --test @files 2>&1 | Tee-Object -FilePath sdk-test.txt
           $code = $LASTEXITCODE
           $passed = 0
           $match = Select-String -Path sdk-test.txt -Pattern 'pass (\d+)' | Select-Object -Last 1
