@@ -218,7 +218,10 @@ pub fn standard_roots(options: &Options) -> Vec<SourceRoot> {
         };
         roots.extend(shortcut_roots(&dirs));
     }
-    if options.layers.scan {
+    // The scan is the last resort, and it costs its whole budget. Running it after an
+    // earlier layer already answered would spend 400 ms on every command to add a
+    // duplicate of a root that is already known.
+    if options.layers.scan && roots.is_empty() {
         let dirs = if options.scan_dirs.is_empty() {
             crate::scan::default_scan_dirs()
         } else {
@@ -715,6 +718,45 @@ mod tests {
         assert_eq!(installs[0].health, HEALTH_DAMAGED);
     }
 
+    /// The scan is the last resort, so it must not run when an earlier layer already
+    /// answered: it costs its whole budget (400 ms) and adds nothing.
+    #[test]
+    fn the_scan_is_skipped_once_an_earlier_layer_found_something() {
+        let fixture = o824_fixtures::build("ok").expect("build the ok fixture");
+        let store = o824_fixtures::TempDir::new("o824-discovery-scan-skip-").expect("temp dir");
+        let state_path = store.path().join("state.json");
+        let mut state = o824_state::State::default();
+        state.record("local-1", fixture.root().display().to_string(), "desktop");
+        o824_state::save(&state_path, &state).expect("save");
+
+        // A second, perfectly valid installation the scan would find if it ran.
+        let scanned = store.path().join("elsewhere").join("DeepSeek Harness");
+        std::fs::create_dir_all(scanned.join("resources")).expect("mkdir");
+        std::fs::write(scanned.join(crate::EXE_NAME), b"stub").expect("exe");
+        std::fs::write(scanned.join(crate::ASAR_REL_PATH), b"stub").expect("asar");
+
+        let options = Options {
+            roots: None,
+            extra_dirs: Vec::new(),
+            home: None,
+            layers: Layers {
+                state: true,
+                registry: false,
+                volumes: false,
+                process: false,
+                shortcut: false,
+                scan: true,
+            },
+            state_path: Some(state_path),
+            shortcut_dirs: Vec::new(),
+            scan_dirs: vec![store.path().join("elsewhere")],
+        };
+
+        let candidates = candidate_roots(&options);
+        assert_eq!(candidates.len(), 1, "{candidates:?}");
+        assert_eq!(candidates[0].source, Source::State);
+    }
+
     #[test]
     fn a_root_remembered_in_the_state_file_is_found_without_the_registry() {
         let fixture = o824_fixtures::build("ok").expect("build the ok fixture");
@@ -842,5 +884,33 @@ mod tests {
             roots.contains(&expected),
             "the running host's directory is a candidate root: {roots:?}"
         );
+    }
+
+    #[test]
+    #[ignore = "diagnostic: prints per-layer timings"]
+    fn layer_timings() {
+        use std::time::Instant;
+        let state = Instant::now();
+        let _ = state_roots(None);
+        let state_ms = state.elapsed();
+
+        let registry = Instant::now();
+        let _ = registry_roots();
+        let registry_ms = registry.elapsed();
+
+        let volumes = Instant::now();
+        let _ = volume_roots();
+        let volumes_ms = volumes.elapsed();
+
+        let process = Instant::now();
+        let _ = crate::processes::process_roots();
+        let process_ms = process.elapsed();
+
+        let shortcut = Instant::now();
+        let dirs = crate::shortcuts::default_shortcut_dirs();
+        let _ = crate::shortcuts::shortcut_roots(&dirs);
+        let shortcut_ms = shortcut.elapsed();
+
+        println!("state {state_ms:?} registry {registry_ms:?} volumes {volumes_ms:?} process {process_ms:?} shortcut {shortcut_ms:?}");
     }
 }
