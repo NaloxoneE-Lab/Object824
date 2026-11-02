@@ -28,10 +28,26 @@ fn run(
     )
 }
 
-/// A stand-in process: node sleeping, so the image and the creation time are real.
+/// A stand-in process that keeps running, so identity checks have something to check.
+///
+/// The first version of this helper ran the test binary with `--list`, which exits
+/// immediately: the tests asserted that a process survived a refusal, and on CI there
+/// was no process left to survive.
 fn spawn_stand_in() -> std::process::Child {
-    std::process::Command::new(std::env::current_exe().expect("current exe"))
-        .args(["--list", "--format", "terse"])
+    #[cfg(windows)]
+    let mut command = {
+        let mut command = std::process::Command::new("ping");
+        command.args(["-n", "60", "127.0.0.1"]);
+        command
+    };
+    #[cfg(not(windows))]
+    let mut command = {
+        let mut command = std::process::Command::new("sleep");
+        command.arg("60");
+        command
+    };
+    command
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
@@ -45,6 +61,7 @@ fn record_for(install_id: &str, pid: u32, image: &str, home: &str) -> ProcessRec
         port: Some(12345),
         home: home.to_owned(),
         image: image.to_owned(),
+        created: o824_webform::started_at(pid).unwrap_or(0),
         started_at: "2026-11-03T00:00:00Z".to_owned(),
         log_path: String::new(),
     }
@@ -166,6 +183,7 @@ fn logs_prints_the_tail_of_the_recorded_file() {
     std::fs::write(&log, "one\ntwo\nthree\nfour\n").expect("write log");
     let mut record = record_for("web", 1, r"C:\x\node.exe", "D:\\home");
     record.log_path = log.display().to_string();
+    record.created = 1;
     state_at(temp.path(), Some(record));
 
     let root = temp.path().display().to_string();

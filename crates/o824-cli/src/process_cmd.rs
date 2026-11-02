@@ -137,7 +137,7 @@ pub fn start(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
     if let Err(error) = o824_state::save(&state_path, &state) {
         // The process is running and unrecorded, which is worse than not starting it:
         // say so instead of leaving a server nobody can stop from this kernel.
-        let _ = o824_webform::stop(&record, o824_webform::started_at(record.pid));
+        let _ = o824_webform::stop(&record);
         let _ = writeln!(stderr, "{error}");
         return exit_code_of(Some(&error));
     }
@@ -205,8 +205,7 @@ pub fn stop(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> 
         return EXIT_OK;
     };
 
-    let creation = o824_webform::started_at(record.pid);
-    if let Err(error) = o824_webform::stop(&record, creation) {
+    if let Err(error) = o824_webform::stop(&record) {
         let _ = writeln!(stderr, "{error}");
         return exit_code_of(Some(&error));
     }
@@ -344,11 +343,7 @@ pub fn logs(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> 
 
 /// True when the recorded process is still the process it recorded.
 pub fn is_alive(record: &ProcessRecord) -> bool {
-    o824_webform::is_the_recorded_process(
-        &record.image,
-        o824_webform::started_at(record.pid),
-        record.pid,
-    )
+    o824_webform::is_the_recorded_process(&record.image, record.created, record.pid)
 }
 
 /// The data root and home a subcommand works against.

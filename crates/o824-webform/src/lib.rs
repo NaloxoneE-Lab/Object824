@@ -131,6 +131,7 @@ pub fn start(
                     port: Some(port),
                     home: home.display().to_string(),
                     image: image_of(pid).unwrap_or_default(),
+                    created: started_at(pid).unwrap_or(0),
                     started_at: o824_model::Timestamp::now().to_rfc3339_seconds(),
                     log_path: log_path.display().to_string(),
                 },
@@ -285,27 +286,29 @@ pub fn started_at(pid: u32) -> Option<u64> {
     }
 }
 
-/// True when `pid` is the process the record describes.
-pub fn is_the_recorded_process(image: &str, creation: Option<u64>, pid: u32) -> bool {
+/// True when `pid` is still the process the record describes.
+///
+/// Both halves are required: the image path, and the creation time the record captured
+/// when it started the process. The creation time is what makes this a real identity
+/// check — a pid is reused, and a pid is all a naive check would compare.
+pub fn is_the_recorded_process(image: &str, created: u64, pid: u32) -> bool {
+    if created == 0 {
+        // A record that never captured the creation time cannot prove anything.
+        return false;
+    }
     let Some(current) = image_of(pid) else {
         return false;
     };
     if !image.is_empty() && !current.eq_ignore_ascii_case(image) {
         return false;
     }
-    match (creation, started_at(pid)) {
-        // Both known: they must be equal. A count that differs is a different process.
-        (Some(recorded), Some(actual)) => recorded == actual,
-        // One side unreadable: the image check above is what is left, and it is a
-        // weaker claim than the record made. Refuse rather than guess.
-        _ => false,
-    }
+    started_at(pid) == Some(created)
 }
 
 /// Stops the process a record describes, if it is still that process.
 #[allow(unsafe_code)]
-pub fn stop(record: &ProcessRecord, creation: Option<u64>) -> Result<(), Error> {
-    if !is_the_recorded_process(&record.image, creation, record.pid) {
+pub fn stop(record: &ProcessRecord) -> Result<(), Error> {
+    if !is_the_recorded_process(&record.image, record.created, record.pid) {
         return Err(Error::new(
             Code::StateDrift,
             format!(
@@ -393,8 +396,19 @@ mod tests {
         // is no, whatever the record claims.
         assert!(!is_the_recorded_process(
             r"C:\nowhere\node.exe",
-            Some(1),
+            1,
             0x7fff_fffe
+        ));
+    }
+
+    #[test]
+    fn a_record_with_no_creation_time_proves_nothing() {
+        // Our own process is certainly alive, but a record that never captured a
+        // creation time cannot say which process it means, so it is refused.
+        assert!(!is_the_recorded_process(
+            &image_of(std::process::id()).unwrap_or_default(),
+            0,
+            std::process::id()
         ));
     }
 
@@ -451,16 +465,18 @@ mod tests {
             "the image is part of the identity"
         );
 
-        // It is the process the record names.
-        let creation = started_at(started.pid);
-        assert!(creation.is_some(), "a live process has a creation time");
+        // It is the process the record names, by image and by creation time.
+        assert!(
+            started.record.created > 0,
+            "the record captured a creation time"
+        );
         assert!(is_the_recorded_process(
             &started.record.image,
-            creation,
+            started.record.created,
             started.pid
         ));
 
-        stop(&started.record, creation).expect("stop it again");
+        stop(&started.record).expect("stop it again");
         std::thread::sleep(Duration::from_millis(500));
         assert!(image_of(started.pid).is_none(), "the process is gone");
     }

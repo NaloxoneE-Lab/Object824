@@ -54,7 +54,13 @@ pub struct ProcessRecord {
     pub home: String,
     /// The image it runs, as the system reported it.
     pub image: String,
-    /// When it was started; with `image`, this is what makes a pid safe to kill.
+    /// The OS creation time, in the form Windows reports it.
+    ///
+    /// Together with `image` this is the process's identity: a pid is reused, but the
+    /// same pid never carries the same creation time twice. Without it, a record can
+    /// only say "something with this pid exists", which is not enough to kill.
+    pub created: u64,
+    /// When it was started, for a human reading the state file.
     pub started_at: String,
     /// The file its stdout and stderr go to.
     pub log_path: String,
@@ -411,6 +417,7 @@ mod tests {
             port: Some(21846),
             home: r"D:\home".to_owned(),
             image: r"C:\npm\node.exe".to_owned(),
+            created: 133_700_000_000_000_000,
             started_at: "2026-11-03T02:00:00Z".to_owned(),
             log_path: r"D:\data\logs\i2.log".to_owned(),
         });
