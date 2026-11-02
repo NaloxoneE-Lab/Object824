@@ -358,7 +358,7 @@ pub fn status(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -
     };
 
     if flags.flag("json") {
-        let rows: Vec<serde_json::Value> = state
+        let mut rows: Vec<serde_json::Value> = state
             .processes
             .values()
             .map(|record| {
@@ -367,6 +367,7 @@ pub fn status(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -
                     "pid": record.pid,
                     "port": record.port,
                     "running": is_alive(record),
+                    "startedBy": "kernel",
                     // The URL carries the trust token, so it is read from the log rather
                     // than stored — but a person asking what is running needs it.
                     "url": o824_webform::url_from_log(std::path::Path::new(&record.log_path)),
@@ -374,11 +375,24 @@ pub fn status(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -
                 })
             })
             .collect();
+        for host in foreign_hosts(&state) {
+            rows.push(serde_json::json!({
+                "installId": "desktop",
+                "pid": host.pid,
+                "port": serde_json::Value::Null,
+                "running": true,
+                "startedBy": "other",
+                "log": serde_json::Value::Null,
+            }));
+        }
         let _ = writeln!(stdout, "{}", serde_json::Value::Array(rows));
         return EXIT_OK;
     }
 
-    if state.processes.is_empty() {
+    // §21.2's `status()` is "what is running", not "what I started": a desktop instance
+    // the user launched themselves is exactly the thing the next start must know about.
+    let foreign = foreign_hosts(&state);
+    if state.processes.is_empty() && foreign.is_empty() {
         let _ = writeln!(stdout, "nothing started by this kernel");
         return EXIT_OK;
     }
@@ -402,7 +416,23 @@ pub fn status(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -
             }
         }
     }
+    for host in foreign {
+        let _ = writeln!(
+            stdout,
+            "{:<8} {:<8} pid={:<7} port={:<6} started outside this kernel",
+            "desktop", "running", host.pid, "-"
+        );
+    }
     EXIT_OK
+}
+
+/// Running desktop instances that no record claims.
+fn foreign_hosts(state: &o824_state::State) -> Vec<o824_discovery::RunningHost> {
+    let recorded: Vec<u32> = state.processes.values().map(|record| record.pid).collect();
+    o824_discovery::host_processes()
+        .into_iter()
+        .filter(|host| !recorded.contains(&host.pid))
+        .collect()
 }
 
 /// `o824 logs`.

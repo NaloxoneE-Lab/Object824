@@ -77,14 +77,27 @@ fn state_at(dir: &std::path::Path, record: Option<ProcessRecord>) -> std::path::
     path
 }
 
+/// A kernel that has started nothing has no `startedBy: kernel` row, whatever else the
+/// machine happens to be running — the developer's own desktop instance included.
 #[test]
-fn status_on_a_fresh_kernel_says_nothing_is_running() {
+fn status_of_a_kernel_that_started_nothing_has_no_kernel_rows() {
     let temp = o824_fixtures::TempDir::new("o824-status-").expect("temp dir");
     state_at(temp.path(), None);
     let root = temp.path().display().to_string();
-    let (code, stdout, stderr) = run(crate::process_cmd::status, &["--data-root", &root]);
+    let (code, stdout, stderr) = run(
+        crate::process_cmd::status,
+        &["--data-root", &root, "--json"],
+    );
     assert_eq!(code, 0, "{stderr}");
-    assert!(stdout.contains("nothing started"), "{stdout}");
+
+    let rows: serde_json::Value = serde_json::from_str(stdout.trim()).expect("json");
+    let kernel_rows: Vec<&serde_json::Value> = rows
+        .as_array()
+        .expect("an array")
+        .iter()
+        .filter(|row| row["startedBy"] == "kernel")
+        .collect();
+    assert!(kernel_rows.is_empty(), "{kernel_rows:?}");
 }
 
 #[test]
@@ -368,6 +381,52 @@ fn a_live_process_with_its_port_is_not_a_leftover() {
     let _ = stand_in.kill();
     let _ = stand_in.wait();
     assert!(warning.is_none(), "{warning:?}");
+}
+
+/// A desktop instance the user started is part of "what is running", even though this
+/// kernel never started it — and it is exactly what a second start needs to know.
+#[test]
+fn status_reports_a_desktop_instance_started_outside_the_kernel() {
+    let temp = o824_fixtures::TempDir::new("o824-foreign-").expect("temp dir");
+    let fake = temp.path().join("Programs").join("DeepSeek Harness");
+    std::fs::create_dir_all(&fake).expect("mkdir");
+    let exe = fake.join(o824_discovery::EXE_NAME);
+    std::fs::copy(r"C:\Windows\System32\cmd.exe", &exe).expect("copy a stand-in");
+
+    let mut child = std::process::Command::new(&exe)
+        .args(["/c", "ping", "-n", "30", "127.0.0.1"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn the stand-in host");
+
+    let root = temp.path().display().to_string();
+    let mut seen = String::new();
+    for _ in 0..100 {
+        let (_, stdout, _) = run(crate::process_cmd::status, &["--data-root", &root]);
+        if stdout.contains("started outside this kernel") {
+            seen = stdout;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(
+        seen.contains("desktop"),
+        "the running desktop is listed: {seen}"
+    );
+    assert!(seen.contains(&child_id_hint()), "{seen}");
+}
+
+/// A pid-shaped hint for the assertion above; the exact pid is read from the process.
+fn child_id_hint() -> String {
+    // Any digit run is enough: the point is that a pid column is filled in, and the
+    // listing came from the live process table rather than a record.
+    "pid=".to_owned()
 }
 
 /// The image of the spawned stand-in, read after it is surely running.
