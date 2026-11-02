@@ -306,11 +306,12 @@ mod tests {
 
         let roots = shortcut_roots(&[temp.path().to_path_buf()]);
         assert_eq!(roots.len(), 1, "{roots:?}");
+        // The shell expands a short path component (`RUNNER~1` on a CI runner) to its
+        // long form, so the same directory can come back spelled differently. Identity
+        // is what this layer promises; the spelling belongs to whoever resolved it.
         assert_eq!(
-            roots[0].root,
-            o824_model::path::clean(fixture.root())
-                .display()
-                .to_string()
+            crate::machine::dedupe_key(Path::new(&roots[0].root)),
+            crate::machine::dedupe_key(fixture.root())
         );
         assert_eq!(roots[0].source, Source::Shortcut);
     }
