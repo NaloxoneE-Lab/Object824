@@ -396,6 +396,11 @@ pub fn status(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -
         if let Some(url) = o824_webform::url_from_log(std::path::Path::new(&record.log_path)) {
             let _ = writeln!(stdout, "         {url}");
         }
+        if !is_alive(record) {
+            if let Some(warning) = leftover_warning(record) {
+                let _ = writeln!(stdout, "         {warning}");
+            }
+        }
     }
     EXIT_OK
 }
@@ -468,6 +473,30 @@ fn context_from(flags: &mut FlagSet) -> Option<Context> {
         None => o824_state::data_root(None),
     };
     Some(Context { data_root, home })
+}
+
+/// The warning for a process that is gone while its port is still held.
+///
+/// This is §21.4's third risk in its actionable form: the server was stopped (or died),
+/// and something else — usually a child it spawned — still holds the port. Naming the
+/// owner is the difference between "port busy" and a fact a person can act on.
+pub fn leftover_warning(record: &ProcessRecord) -> Option<String> {
+    let port = record.port?;
+    let owner = o824_webform::port_owner(port)?;
+    if owner.pid == record.pid {
+        // The process itself is still there; this is not a leftover.
+        return None;
+    }
+    Some(format!(
+        "warning: port {port} is still listened on by pid {} ({}); {} is not running",
+        owner.pid,
+        if owner.image.is_empty() {
+            "unknown"
+        } else {
+            &owner.image
+        },
+        record.install_id
+    ))
 }
 
 /// The warning shown when a desktop instance is already running.

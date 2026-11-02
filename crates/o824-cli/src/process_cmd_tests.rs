@@ -329,6 +329,47 @@ fn status_shows_the_url_of_a_running_instance() {
     );
 }
 
+/// A record whose process is gone while its port is still held: status has to say both
+/// things, because "gone" alone hides the port that the next start will trip over.
+#[test]
+fn status_reports_a_port_left_held_after_the_process_is_gone() {
+    let temp = o824_fixtures::TempDir::new("o824-leftover-").expect("temp dir");
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+
+    let mut record = record_for("web", 0x7fff_fffe, r"C:\nowhere\node.exe", "D:\\home");
+    record.port = Some(port);
+    record.created = 1;
+    state_at(temp.path(), Some(record));
+
+    let root = temp.path().display().to_string();
+    let (code, stdout, stderr) = run(crate::process_cmd::status, &["--data-root", &root]);
+
+    assert_eq!(code, 0, "{stderr}");
+    assert!(
+        stdout.contains("gone"),
+        "the record is reported as gone: {stdout}"
+    );
+    assert!(
+        stdout.contains(&format!("port {port} is still listened on")),
+        "the port holder is named: {stdout}"
+    );
+    assert!(stdout.contains(&std::process::id().to_string()), "{stdout}");
+    drop(listener);
+}
+
+/// Nothing to warn about when the process is alive and owns its port.
+#[test]
+fn a_live_process_with_its_port_is_not_a_leftover() {
+    let mut stand_in = spawn_stand_in();
+    let image = image_of_stand_in(&mut stand_in);
+    let record = record_for("web", stand_in.id(), &image, "D:\\home");
+    let warning = crate::process_cmd::leftover_warning(&record);
+    let _ = stand_in.kill();
+    let _ = stand_in.wait();
+    assert!(warning.is_none(), "{warning:?}");
+}
+
 /// The image of the spawned stand-in, read after it is surely running.
 fn image_of_stand_in(child: &mut std::process::Child) -> String {
     for _ in 0..50 {
