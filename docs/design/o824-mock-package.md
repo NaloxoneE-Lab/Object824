@@ -108,3 +108,21 @@ GitHub Actions job mock-package                            → Node 20 与 24 �
 
 - Release 上传由谁做（见 §6）。
 - ~~是否把 `o824-mock.exe` 一起挂~~ —— **一起挂**（2026-11-02 决定），构建脚本把它一并放进 `dist/`。
+
+## 11. 实施记录（2026-11-02）
+
+计划：`docs/superpowers/plans/2026-11-02-o824-mock-package.md`。六个任务全部完成，另加一轮独立评审后的修复。
+
+**评审抓到的、测试没抓到的**（全部已修，每条都有先失败的测试）：
+
+| 级别 | 问题 | 现在的行为 |
+|---|---|---|
+| Critical | `process.exit()` 与尚未写完的 stdout 竞争，200 KiB 的 plan 结果有约 40% 概率崩在 libuv（exit 127） | 改成设置 `process.exitCode`，让事件循环把最后一帧写完 |
+| Critical | transcript 目录不存在时，`new WASI` 抛 `UVWASI_ENOENT` + 栈、退出码 1 | 启动前在宿主机检查文件，退出码 8、消息里是用户自己打的路径 |
+| Important | README 的客户端示例用 shell 且不关 stdin | 改成直接 spawn 安装好的包、结束 stdin；示例本身进了发布校验脚本 |
+| Important | CI 无法区分"22 个通过"与"一个都没跑" | 断言通过数 ≥ 23 |
+| Important | 安装步骤只断言退出码，没有比对帧 | 由 `scripts/verify-mock-release.mjs` 比对 |
+| Important | 两个 job 都是 windows-latest，而包的卖点是"不需要 Windows" | 矩阵加 ubuntu，脚本按平台只发 Windows 的原生 exe |
+| Important | "空 64 KiB 行不被截断"只测了 >8 MiB 的拒绝 | 补 200 KiB 帧往返 ×6 |
+
+**未修的 minor**（记录在计划的 ledger 里）：只重写第一个 `--transcript`、`--transcript=value` 不支持、`package.json` 缺 `repository`/`LICENSE`、测试里 `shell:true` 的 DEP0190 等。
