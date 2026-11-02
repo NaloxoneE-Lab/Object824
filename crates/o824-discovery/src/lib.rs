@@ -62,8 +62,15 @@ pub const ASAR_REL_PATH: &str = "resources\\app.asar";
 /// The profile directory inside the DSH home.
 pub const PROFILES_DIR_NAME: &str = "profiles";
 
-/// The only install shape P0 knows how to validate.
+/// The install shape with an installed application and an asar bundle.
 pub const KIND_DESKTOP: &str = "desktop";
+/// The install shape that is a global npm package rather than an application.
+pub const KIND_WEB: &str = "web";
+
+/// The package name `npm i -g @deepseek-ai/dsh` puts on disk.
+pub const WEB_PACKAGE_NAME: &str = "@deepseek-ai/dsh";
+/// The manifest that names a package and gives it its entry point.
+pub const PACKAGE_JSON_NAME: &str = "package.json";
 /// Marks a tree that passed [`validate`].
 pub const HEALTH_OK: &str = "ok";
 /// Marks a discovered root that failed [`validate`].
@@ -81,6 +88,92 @@ pub const HOME_DIR_NAME: &str = ".dsh";
 const MAX_ASAR_HEADER_SIZE: u32 = 64 << 20;
 /// Bounds the `package.json` payload read out of an asar.
 const MAX_PACKAGE_JSON_SIZE: i64 = 1 << 20;
+
+/// Reads the `name` field of `<root>/package.json`, when there is one.
+fn package_name(root: &Path) -> Option<String> {
+    let text = fs::read_to_string(root.join(PACKAGE_JSON_NAME)).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    value.get("name")?.as_str().map(str::to_owned)
+}
+
+/// Validates one `npm i -g @deepseek-ai/dsh` package directory.
+///
+/// The web form has no asar and no application executable: what makes it an
+/// installation is a package manifest that names the DSH package, an entry point that
+/// exists, and a version. Its health is otherwise the profile's health, which the
+/// per-profile checks cover.
+pub fn validate_web(root: &Path, home: &Path) -> Result<Install, Error> {
+    let clean = clean_path(root);
+    let manifest_path = clean.join(PACKAGE_JSON_NAME);
+    let text = fs::read_to_string(&manifest_path).map_err(|error| {
+        Error::new(
+            Code::InstallDir,
+            format!(
+                "install: {:?} is not a DeepSeek Harness web package (cannot read {PACKAGE_JSON_NAME}: {error})",
+                clean.display().to_string()
+            ),
+        )
+        .with_param("root", clean.display().to_string())
+    })?;
+    let manifest: serde_json::Value = serde_json::from_str(&text).map_err(|error| {
+        Error::new(
+            Code::InstallDir,
+            format!(
+                "install: {:?} has an unreadable {PACKAGE_JSON_NAME}: {error}",
+                clean.display().to_string()
+            ),
+        )
+        .with_param("root", clean.display().to_string())
+    })?;
+
+    let mut missing: Vec<String> = Vec::new();
+    if manifest.get("name").and_then(|name| name.as_str()) != Some(WEB_PACKAGE_NAME) {
+        missing.push(WEB_PACKAGE_NAME.to_owned());
+    }
+    let version = manifest
+        .get("version")
+        .and_then(|version| version.as_str())
+        .unwrap_or_default()
+        .to_owned();
+    if version.is_empty() {
+        missing.push("version".to_owned());
+    }
+    // `bin.dsh` is what the `dsh` shim runs; without it the package is installed but
+    // cannot start.
+    let entry = manifest
+        .get("bin")
+        .and_then(|bin| bin.get("dsh"))
+        .and_then(|entry| entry.as_str())
+        .map(|entry| clean.join(entry.replace('/', std::path::MAIN_SEPARATOR_STR)));
+    match &entry {
+        Some(entry) if is_regular_file(entry) => {}
+        Some(entry) => missing.push(entry.display().to_string()),
+        None => missing.push("bin.dsh".to_owned()),
+    }
+
+    if !missing.is_empty() {
+        let display = clean.display();
+        return Err(Error::new(
+            Code::InstallDir,
+            format!(
+                "install: {display:?} is not a usable DeepSeek Harness web package (missing {})",
+                missing.join(", ")
+            ),
+        )
+        .with_param("root", display.to_string())
+        .with_param("missing", missing));
+    }
+
+    Ok(Install {
+        install_id: String::new(),
+        kind: KIND_WEB.to_owned(),
+        root: clean.display().to_string(),
+        version,
+        profiles: profile_names(home),
+        health: HEALTH_OK.to_owned(),
+        home: home.display().to_string(),
+    })
+}
 
 /// Resolves the DSH home directory.
 ///
@@ -173,6 +266,11 @@ pub fn validate_with(
     registry_version: Option<&str>,
 ) -> Result<Install, Error> {
     let clean = clean_path(root);
+    // The shape is decided by what is on disk, not by which layer found the path: a
+    // scan or a shortcut can land on either shape, and the check that follows differs.
+    if package_name(&clean).as_deref() == Some(WEB_PACKAGE_NAME) {
+        return validate_web(&clean, home);
+    }
     let exe = clean.join(EXE_NAME);
     let asar = clean.join("resources").join("app.asar");
 
@@ -437,5 +535,60 @@ mod tests {
         let fixture = o824_fixtures::build("ok").expect("fixture");
         let install = validate_with(fixture.root(), home.path(), None).expect("validate");
         assert!(orphan_profiles(home.path(), &[install]).is_empty());
+    }
+
+    /// Builds the directory an `npm i -g @deepseek-ai/dsh` leaves behind.
+    fn write_web_package(root: &Path, version: &str, with_entry: bool) {
+        std::fs::create_dir_all(root.join("lib")).expect("create lib");
+        let manifest = format!(
+            "{{\"name\":\"{name}\",\"version\":\"{version}\",\"bin\":{{\"dsh\":\"lib/bin.js\"}}}}",
+            name = WEB_PACKAGE_NAME
+        );
+        std::fs::write(root.join("package.json"), manifest).expect("write package.json");
+        if with_entry {
+            std::fs::write(root.join("lib").join("bin.js"), b"// entry").expect("write entry");
+        }
+    }
+
+    #[test]
+    fn a_web_package_directory_validates_as_the_web_form() {
+        let temp = o824_fixtures::TempDir::new("o824-web-").expect("temp dir");
+        let root = temp
+            .path()
+            .join("node_modules")
+            .join("@deepseek-ai")
+            .join("dsh");
+        write_web_package(&root, "0.2.1-rc.5", true);
+
+        let home = temp.path().join("home");
+        std::fs::create_dir_all(home.join("profiles").join("desktop")).expect("mkdir");
+        let install = validate_web(&root, &home).expect("the web package must validate");
+
+        assert_eq!(install.kind, KIND_WEB);
+        assert_eq!(install.version, "0.2.1-rc.5");
+        assert_eq!(install.health, HEALTH_OK);
+        assert_eq!(
+            install.root,
+            o824_model::path::clean(&root).display().to_string()
+        );
+        assert_eq!(install.profiles, vec!["desktop".to_owned()]);
+    }
+
+    #[test]
+    fn a_web_package_without_its_entry_point_is_not_healthy() {
+        let temp = o824_fixtures::TempDir::new("o824-web-").expect("temp dir");
+        let root = temp.path().join("dsh");
+        write_web_package(&root, "0.2.1-rc.5", false);
+
+        let error =
+            validate_web(&root, temp.path()).expect_err("a package with no entry is broken");
+        assert_eq!(error.code, Code::InstallDir);
+    }
+
+    #[test]
+    fn a_desktop_root_is_not_mistaken_for_a_web_package() {
+        let fixture = o824_fixtures::build("ok").expect("fixture");
+        let install = validate_with(fixture.root(), fixture.root(), None).expect("validate");
+        assert_eq!(install.kind, KIND_DESKTOP);
     }
 }
