@@ -28,6 +28,7 @@
 
 | 项 | 状态 | 判据 |
 |---|---|---|
+| `o824 kernel --stdio`（活的协议服务端） | ✅ 2026-11-03 | 9 个进程内用例（doctor 信封与 `spec/golden` 逐字节相同）+ 2 个真二进制用例 |
 | `o824-sdk`（TypeScript 客户端） | ✅ 2026-11-03 | 18 个用例；对着 mock（真实协议）跑；契约测试解析 `spec/transcripts` 全部报文 |
 | `o824-mock` npm 包（WASI，跨平台） | ✅ 2026-11-02 | `packages/o824-mock` 的 Node 用例全绿 + CI `mock-package` 在 Node 20/24 上绿 + 装 tarball 后能回放三个录制 |
 | 发现算法补层（§7.7 第 1/4/5/6 层） | ✅ 2026-11-02 | 每层都有"找到 / 找不到"两侧用例（`cargo test -p o824-discovery`，24 个） |

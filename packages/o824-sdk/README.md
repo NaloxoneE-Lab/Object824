@@ -52,11 +52,11 @@ if (envelope.findings.length > 0) {
 await kernel.close();
 ```
 
-## The kernel server is the next milestone
+## Against a recording, without DSH
 
-`o824 kernel --stdio` does not exist yet — the protocol has a codec and a recorded
-replayer, and the live server is the piece still to come. Until it lands, point the
-client at the mock, which speaks the same protocol from a recording:
+`o824 kernel --stdio` is the live server; point the client at the mock when you do not
+have an installation at hand. The mock speaks the same protocol from a recording, so
+the client code does not change:
 
 ```ts
 import { connect } from 'o824-sdk';
