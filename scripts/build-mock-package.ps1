@@ -46,10 +46,16 @@ try {
   $dist = Join-Path $root 'dist'
   New-Item -ItemType Directory -Force -Path $dist | Out-Null
 
+  # The host binary is built on every platform so the wasm can be compared with it, but
+  # only Windows ships it as a release asset: the native executable a Windows user may
+  # prefer is a Windows binary.
   Write-Output '== building the host binary =='
   & $cargo build --release -p o824-mock --bin o824-mock
   if ($LASTEXITCODE -ne 0) { throw 'cargo build (host) failed' }
-  Copy-Item (Join-Path (Join-Path (Join-Path $root 'target') 'release') 'o824-mock.exe') (Join-Path $dist 'o824-mock.exe') -Force
+  $hostExe = Join-Path $dist 'o824-mock.exe'
+  if ($IsWindows) {
+    Copy-Item (Join-Path (Join-Path (Join-Path $root 'target') 'release') 'o824-mock.exe') $hostExe -Force
+  }
 
   Write-Output '== building the wasm module =='
   & $cargo build --release -p o824-mock --bin o824-mock --target wasm32-wasip1
