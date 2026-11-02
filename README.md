@@ -37,6 +37,25 @@ O824 内核的 Rust 实现。**Go 版（`D:\dsh work\Object 824`，tag `v0-go-re
 
 前两条在仓库里、可自动化。**第 1 条是第一周就要能跑的**。
 
+## 命令一览
+
+| 命令 | 做什么 |
+|---|---|
+| `o824 discover` | 列出本机的安装（desktop / web 两种形态），`--json` 给机器 |
+| `o824 doctor` | 诊断一个安装，退出码 1 表示有 finding |
+| `o824 repair` | 出计划并执行；`--dry-run` 只出计划，`--with-install` 允许副本重装 |
+| `o824 snapshot` / `rollback` | 设置快照与恢复 |
+| `o824 diagnose` | 生成脱敏诊断包（zip） |
+| `o824 kernel --stdio` | **活的协议服务端**：一个 JSON-RPC 会话，作业式 `doctor`/`plan`/`apply`、`cancel` |
+| `o824 start` / `stop` / `status` / `logs` | web 形态作为**受管进程**：分离启动、记 pid + 创建时间、按身份停止、看日志尾部 |
+| `o824 mock` | 回放录制（与 npm 包同一份实现） |
+
+`start` 认得"这个进程是我起的"：记录里存 image 与**进程创建时间**，`stop` 两个都比，
+pid 被复用也不会杀错。它是分离进程，记录里**不存** URL 的 token——`status` 从日志读回。
+
+> **协议薄客户端**：`packages/o824-sdk`（TypeScript）。它只做分帧、请求/响应关联、
+> 作业事件、取消传播、退出检测、能力协商与类型；不做"该不该修"的判断，也不替你确认。
+
 ## 用 mock 开发 UI（不需要 DSH，也不需要 Windows）
 
 第三方 UI 可以完全对着录制开发：`o824-mock` 把 `spec/transcripts/` 里的会话回放出来，
