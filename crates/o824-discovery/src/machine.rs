@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use o824_errs::Code;
 use o824_model::Install;
 
+use crate::processes::{host_processes, process_roots, running_host_roots};
 use crate::{profile_names, validate_with, HEALTH_DAMAGED, KIND_DESKTOP};
 
 /// Which layer of the discovery algorithm produced a candidate.
@@ -203,6 +204,9 @@ pub fn standard_roots(options: &Options) -> Vec<SourceRoot> {
             registry_version: None,
             source: Source::Volume,
         }));
+    }
+    if options.layers.process {
+        roots.extend(process_roots());
     }
     roots
 }
@@ -763,6 +767,59 @@ mod tests {
             candidates[0].source,
             Source::State,
             "the remembered root outranks the explicit duplicate that names the same path"
+        );
+    }
+
+    /// A process whose image is the host executable contributes its directory: a
+    /// running installation is live evidence, and it also tells the coexistence check
+    /// later that something is already up.
+    #[cfg(windows)]
+    #[test]
+    fn a_running_host_process_contributes_its_directory() {
+        use std::process::{Command, Stdio};
+        use std::time::{Duration, Instant};
+
+        let temp = o824_fixtures::TempDir::new("o824-discovery-proc-").expect("temp dir");
+        let fake = temp.path().join("fake");
+        std::fs::create_dir_all(&fake).expect("create the fake install directory");
+        let exe = fake.join(crate::EXE_NAME);
+        // A copy of a standard Windows program under the host's file name: the layer
+        // matches on the file name, so the copy is what makes it a candidate.
+        std::fs::copy(r"C:\Windows\System32\cmd.exe", &exe).expect("copy a stand-in exe");
+
+        // The copy is cmd.exe, so it stays alive running a slow but harmless command.
+        let mut child = Command::new(&exe)
+            .args(["/c", "ping", "-n", "30", "127.0.0.1"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn the stand-in host");
+
+        let expected = o824_model::path::clean(&fake).display().to_string();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut found = false;
+        let mut roots = Vec::new();
+        while Instant::now() < deadline {
+            // Snapshot the roots while the process is still alive: the point of the
+            // layer is what discovery sees *while* it runs.
+            roots = running_host_roots();
+            if host_processes()
+                .iter()
+                .any(|process| process.pid == child.id() && process.image.starts_with(&expected))
+            {
+                found = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+
+        assert!(found, "the running stand-in host was not reported");
+        assert!(
+            roots.contains(&expected),
+            "the running host's directory is a candidate root: {roots:?}"
         );
     }
 }

@@ -24,10 +24,16 @@
 #[allow(unsafe_code)]
 pub mod machine;
 
+// The process layer: one Windows API call to enumerate, one to resolve each image.
+#[allow(unsafe_code)]
+pub mod processes;
+
 pub use machine::{
     candidate_roots, dedupe_key, discover, fixed_volumes, parse_display_name_version,
-    registry_roots, sorted_unique_roots, standard_roots, volume_roots, Options, SourceRoot,
+    registry_roots, sorted_unique_roots, standard_roots, state_roots, volume_roots, Layers,
+    Options, Source, SourceRoot,
 };
+pub use processes::{host_processes, running_host_roots, RunningHost};
 
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
