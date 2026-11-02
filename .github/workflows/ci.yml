@@ -76,21 +76,14 @@ jobs:
           }
           exit $code
 
-      # The tarball is what a developer installs, so it is installed here: a package
-      # that tests green but cannot be installed would be found by a user instead.
+      # The tarball is what a developer installs, so it is installed here. The check
+      # writes a request before reading, so it never depends on the runner's stdin
+      # being at end-of-file: a mock with no input would exit zero without proving
+      # anything.
       - name: Install the tarball and replay a recording
         shell: pwsh
         run: |
-          $work = Join-Path $env:RUNNER_TEMP "mock-install"
-          New-Item -ItemType Directory -Force -Path $work | Out-Null
-          Push-Location $work
-          try {
-            '{ "name": "consumer", "private": true }' | Set-Content package.json
-            $tgz = Get-ChildItem (Join-Path $env:GITHUB_WORKSPACE "dist") -Filter "o824-mock-*.tgz" |
-              Select-Object -First 1
-            npm i -D $tgz.FullName
-            if ($LASTEXITCODE -ne 0) { throw "npm i failed" }
-            $result = npx o824-mock --transcript doctor-clean 2>&1
-            if ($LASTEXITCODE -ne 0) { throw "npx o824-mock failed: $result" }
-          }
-          finally { Pop-Location }
+          $tgz = Get-ChildItem (Join-Path $env:GITHUB_WORKSPACE "dist") -Filter "o824-mock-*.tgz" |
+            Select-Object -First 1
+          node scripts/verify-mock-release.mjs $tgz.FullName
+          if ($LASTEXITCODE -ne 0) { throw "the release asset does not work as installed" }
