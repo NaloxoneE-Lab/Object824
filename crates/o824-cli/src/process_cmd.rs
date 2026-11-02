@@ -46,6 +46,13 @@ pub struct Context {
 
 /// `o824 start`.
 pub fn start(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
+    if args
+        .iter()
+        .any(|argument| argument == "--help" || argument == "-h")
+    {
+        let _ = stdout.write_all(USAGE.as_bytes());
+        return EXIT_OK;
+    }
     let mut flags = FlagSet::new(vec![
         FlagSpec::boolean("json"),
         FlagSpec::valued("install"),
@@ -83,6 +90,13 @@ pub fn start(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
 
     let install_id = flags.value("install").unwrap_or("web").to_owned();
     let state_path = context.data_root.join(o824_state::STATE_FILE_NAME);
+    let _lock = match o824_lock::acquire(&context.data_root) {
+        Ok(lock) => lock,
+        Err(error) => {
+            let _ = writeln!(stderr, "{error}");
+            return exit_code_of(Some(&error));
+        }
+    };
     let mut state = match o824_state::load(&state_path) {
         Ok(state) => state,
         Err(error) => {
@@ -93,21 +107,22 @@ pub fn start(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
 
     // The concurrent-instance guard (§21.4): two forms sharing one home means two
     // runtimes writing the same sessions, and the second one is not a convenience.
-    if let Some(existing) = state.processes.get(&install_id) {
-        if is_alive(existing) {
-            let error = Error::new(
-                Code::Busy,
-                format!(
-                    "an instance of {install_id:?} is already running (pid {}); stop it first",
-                    existing.pid
-                ),
-            )
-            .with_param("pid", existing.pid);
-            let _ = writeln!(stderr, "{error}");
-            return exit_code_of(Some(&error));
-        }
-        state.forget_process(&install_id);
+    // §21.4's first risk is about the *home*, not about the label: two forms (or two
+    // starts under different labels) sharing one DSH home share its sessions.
+    if let Some(existing) = blocking_record(&state, &context.home) {
+        let error = Error::new(
+            Code::ConcurrentInstance,
+            format!(
+                "an instance for this DSH home is already running ({} pid {}); stop it first",
+                existing.install_id, existing.pid
+            ),
+        )
+        .with_param("pid", existing.pid)
+        .with_param("home", existing.home.clone());
+        let _ = writeln!(stderr, "{error}");
+        return exit_code_of(Some(&error));
     }
+    state.processes.retain(|_, record| is_alive(record));
 
     // A port that is already being listened on is not a start failure to report
     // generically: naming the owner is what lets a person tell "this is my old server"
@@ -149,15 +164,34 @@ pub fn start(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
         return exit_code_of(Some(&error));
     };
 
+    let mut provisional_saved = false;
     let started = match o824_webform::start(
         &package,
         &context.home,
         &context.data_root,
         port,
         o824_webform::START_TIMEOUT,
+        &mut |record: &ProcessRecord| {
+            // Written before the readiness wait, not after: if this process dies while
+            // waiting, the record is the only thing that can still stop the server.
+            let mut record = record.clone();
+            record.install_id = install_id.clone();
+            let mut interim = state.clone();
+            interim.remember_process(record);
+            o824_state::save(&state_path, &interim)?;
+            provisional_saved = true;
+            Ok(())
+        },
     ) {
         Ok(started) => started,
         Err(error) => {
+            if provisional_saved {
+                // The child is gone (the start path kills it), so the provisional record
+                // must not outlive it.
+                let mut after = state.clone();
+                after.forget_process(&install_id);
+                let _ = o824_state::save(&state_path, &after);
+            }
             let _ = writeln!(stderr, "{error}");
             return exit_code_of(Some(&error));
         }
@@ -190,7 +224,12 @@ pub fn start(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
         let _ = writeln!(
             stdout,
             "started {install_id} pid={} port={} ({})",
-            started.pid, started.port, started.url
+            started.pid,
+            started
+                .port
+                .map(|port| port.to_string())
+                .unwrap_or_else(|| "unknown".to_owned()),
+            started.url
         );
         let _ = writeln!(stdout, "logs: {}", started.log_path.display());
     }
@@ -199,6 +238,13 @@ pub fn start(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
 
 /// `o824 stop`.
 pub fn stop(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
+    if args
+        .iter()
+        .any(|argument| argument == "--help" || argument == "-h")
+    {
+        let _ = stdout.write_all(USAGE.as_bytes());
+        return EXIT_OK;
+    }
     let mut flags = FlagSet::new(vec![
         FlagSpec::boolean("json"),
         FlagSpec::boolean("all"),
@@ -217,13 +263,21 @@ pub fn stop(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> 
         return stop_all(flags.value("data-root").map(PathBuf::from), stdout, stderr);
     }
 
-    let Some(context) = context_from(&mut flags) else {
-        let error = Error::new(Code::Usage, "o824 stop: pass --home (or --all)");
-        let _ = writeln!(stderr, "{error}");
-        return exit_code_of(Some(&error));
-    };
+    // `stop` needs only the data root: the record carries the home it was started with,
+    // which is also why `--all` needs nothing else.
+    let data_root = flags
+        .value("data-root")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| o824_state::data_root(None));
     let install_id = flags.value("install").unwrap_or("web").to_owned();
-    let state_path = context.data_root.join(o824_state::STATE_FILE_NAME);
+    let state_path = data_root.join(o824_state::STATE_FILE_NAME);
+    let _lock = match o824_lock::acquire(&data_root) {
+        Ok(lock) => lock,
+        Err(error) => {
+            let _ = writeln!(stderr, "{error}");
+            return exit_code_of(Some(&error));
+        }
+    };
     let mut state = match o824_state::load(&state_path) {
         Ok(state) => state,
         Err(error) => {
@@ -364,6 +418,13 @@ fn stop_all(data_root: Option<PathBuf>, stdout: &mut dyn Write, stderr: &mut dyn
 
 /// `o824 status`.
 pub fn status(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
+    if args
+        .iter()
+        .any(|argument| argument == "--help" || argument == "-h")
+    {
+        let _ = stdout.write_all(USAGE.as_bytes());
+        return EXIT_OK;
+    }
     let mut flags = FlagSet::new(vec![
         FlagSpec::boolean("json"),
         FlagSpec::valued("data-root"),
@@ -453,6 +514,33 @@ pub fn status(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -
     EXIT_OK
 }
 
+/// The live record, if any, that shares `home`.
+///
+/// §21.4's first risk is about the *home*, not about a label: two forms — or two starts
+/// under different labels — sharing one DSH home share its sessions.
+pub fn blocking_record<'a>(
+    state: &'a o824_state::State,
+    home: &Path,
+) -> Option<&'a o824_state::ProcessRecord> {
+    let home = home.display().to_string();
+    state
+        .processes
+        .values()
+        .find(|record| same_home(&record.home, &home) && is_alive(record))
+}
+
+/// True when two paths name the same directory, ignoring case and spelling.
+fn same_home(left: &str, right: &str) -> bool {
+    o824_model::path::clean(Path::new(left))
+        .display()
+        .to_string()
+        .eq_ignore_ascii_case(
+            &o824_model::path::clean(Path::new(right))
+                .display()
+                .to_string(),
+        )
+}
+
 /// Running desktop instances that no record claims.
 fn foreign_hosts(state: &o824_state::State) -> Vec<o824_discovery::RunningHost> {
     let recorded: Vec<u32> = state.processes.values().map(|record| record.pid).collect();
@@ -464,6 +552,13 @@ fn foreign_hosts(state: &o824_state::State) -> Vec<o824_discovery::RunningHost> 
 
 /// `o824 logs`.
 pub fn logs(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
+    if args
+        .iter()
+        .any(|argument| argument == "--help" || argument == "-h")
+    {
+        let _ = stdout.write_all(USAGE.as_bytes());
+        return EXIT_OK;
+    }
     let mut flags = FlagSet::new(vec![
         FlagSpec::valued("install"),
         FlagSpec::valued("tail"),

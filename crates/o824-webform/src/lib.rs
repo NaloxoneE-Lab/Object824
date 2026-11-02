@@ -38,8 +38,11 @@ pub const READY_MARKER: &str = "dsh web: ";
 pub struct Started {
     /// The process it spawned.
     pub pid: u32,
-    /// The port it listens on.
-    pub port: u16,
+    /// The port it listens on, when the URL it printed names one.
+    ///
+    /// `None` is honest: `--public-url` makes the server advertise a URL without a port,
+    /// and a made-up `0` would make every later port question answer about port 0.
+    pub port: Option<u16>,
     /// The URL it printed, including the trust token.
     pub url: String,
     /// The file its output goes to.
@@ -112,49 +115,55 @@ fn listening_rows() -> Option<Vec<(u16, u32, Option<String>)>> {
     use windows::Win32::NetworkManagement::IpHelper::{
         GetExtendedTcpTable, MIB_TCPROW_OWNER_PID, TCP_TABLE_OWNER_PID_LISTENER,
     };
-    use windows::Win32::Networking::WinSock::AF_INET;
+    use windows::Win32::Networking::WinSock::{AF_INET, AF_INET6};
 
-    // SAFETY: the table is sized by a first call, allocated here, and only read as far
-    // as the second call says it wrote. Every pointer is a local.
-    unsafe {
-        let mut size = 0u32;
-        let first = GetExtendedTcpTable(
-            None,
-            &mut size,
-            false,
-            AF_INET.0 as u32,
-            TCP_TABLE_OWNER_PID_LISTENER,
-            0,
-        );
-        if first != ERROR_INSUFFICIENT_BUFFER.0 && first != NO_ERROR.0 {
-            return None;
-        }
-        let mut buffer = vec![0u8; size as usize];
-        let status = GetExtendedTcpTable(
-            Some(buffer.as_mut_ptr() as *mut _),
-            &mut size,
-            false,
-            AF_INET.0 as u32,
-            TCP_TABLE_OWNER_PID_LISTENER,
-            0,
-        );
-        if status != NO_ERROR.0 {
-            return None;
-        }
+    // Both families: a listener on [::1]:N has no row in the IPv4 table, and DSH's
+    // --host explicitly accepts an IPv6 literal, so reading only AF_INET would call a
+    // busy port free.
+    let mut listeners = Vec::new();
+    for family in [AF_INET.0 as u32, AF_INET6.0 as u32] {
+        // SAFETY: the table is sized by a first call, allocated here, and only read as
+        // far as the second call says it wrote. Every pointer is a local.
+        unsafe {
+            let mut size = 0u32;
+            let first = GetExtendedTcpTable(
+                None,
+                &mut size,
+                false,
+                family,
+                TCP_TABLE_OWNER_PID_LISTENER,
+                0,
+            );
+            if first != ERROR_INSUFFICIENT_BUFFER.0 && first != NO_ERROR.0 {
+                continue;
+            }
+            let mut buffer = vec![0u8; size as usize];
+            let status = GetExtendedTcpTable(
+                Some(buffer.as_mut_ptr() as *mut _),
+                &mut size,
+                false,
+                family,
+                TCP_TABLE_OWNER_PID_LISTENER,
+                0,
+            );
+            if status != NO_ERROR.0 {
+                continue;
+            }
 
-        // The table starts with an entry count, then that many rows.
-        let count = *(buffer.as_ptr() as *const u32) as usize;
-        let rows = buffer.as_ptr().add(4) as *const MIB_TCPROW_OWNER_PID;
-        let mut listeners = Vec::with_capacity(count);
-        for index in 0..count {
-            let row = &*rows.add(index);
-            // The port is stored in network byte order.
-            let port = u16::from_be(row.dwLocalPort as u16);
-            let pid = row.dwOwningPid;
-            listeners.push((port, pid, image_of(pid)));
+            // The table starts with an entry count, then that many rows of the same
+            // shape for either family.
+            let count = *(buffer.as_ptr() as *const u32) as usize;
+            let rows = buffer.as_ptr().add(4) as *const MIB_TCPROW_OWNER_PID;
+            for index in 0..count {
+                let row = &*rows.add(index);
+                // The port is stored in network byte order.
+                let port = u16::from_be(row.dwLocalPort as u16);
+                let pid = row.dwOwningPid;
+                listeners.push((port, pid, image_of(pid)));
+            }
         }
-        Some(listeners)
     }
+    Some(listeners)
 }
 
 #[cfg(not(windows))]
@@ -185,6 +194,7 @@ pub fn start(
     data_root: &Path,
     port: Option<u16>,
     timeout: Duration,
+    on_spawned: &mut dyn FnMut(&ProcessRecord) -> Result<(), Error>,
 ) -> Result<Started, Error> {
     let Some(entry) = entry_point(package_dir) else {
         return Err(Error::new(
@@ -231,23 +241,44 @@ pub fn start(
     )?;
     let pid = child.id();
 
-    match wait_for_ready(&log_path, timeout) {
+    // The record is written as soon as the pid exists, not after readiness: an
+    // interrupted start must leave something `stop` can find, or it leaves a server
+    // nobody can stop.
+    let Some(created) = started_at(pid) else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(Error::new(
+            Code::Internal,
+            format!("web: the started process (pid {pid}) has no readable creation time; it was stopped"),
+        ));
+    };
+    let provisional = ProcessRecord {
+        install_id: String::new(),
+        pid,
+        port: None,
+        home: home.display().to_string(),
+        image: image_of(pid).unwrap_or_default(),
+        created,
+        started_at: o824_model::Timestamp::now().to_rfc3339_seconds(),
+        log_path: log_path.display().to_string(),
+    };
+    if let Err(error) = on_spawned(&provisional) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(error);
+    }
+
+    match wait_for_ready(&log_path, timeout, Some(&mut child)) {
         Ok(url) => {
-            let port = port_of(&url).unwrap_or(0);
+            let port = port_of(&url);
             Ok(Started {
                 pid,
                 port,
                 url: url.clone(),
                 log_path: log_path.clone(),
                 record: ProcessRecord {
-                    install_id: String::new(),
-                    pid,
-                    port: Some(port),
-                    home: home.display().to_string(),
-                    image: image_of(pid).unwrap_or_default(),
-                    created: started_at(pid).unwrap_or(0),
-                    started_at: o824_model::Timestamp::now().to_rfc3339_seconds(),
-                    log_path: log_path.display().to_string(),
+                    port,
+                    ..provisional
                 },
             })
         }
@@ -262,7 +293,11 @@ pub fn start(
 }
 
 /// Waits for the readiness line and returns the URL it names.
-fn wait_for_ready(log_path: &Path, timeout: Duration) -> Result<String, Error> {
+fn wait_for_ready(
+    log_path: &Path,
+    timeout: Duration,
+    mut child: Option<&mut std::process::Child>,
+) -> Result<String, Error> {
     let deadline = Instant::now() + timeout;
     let mut offset = 0u64;
     let mut collected = String::new();
@@ -278,12 +313,28 @@ fn wait_for_ready(log_path: &Path, timeout: Duration) -> Result<String, Error> {
                 }
             }
         }
+        if let Some(child) = child.as_deref_mut() {
+            if let Ok(Some(status)) = child.try_wait() {
+                // The server died before it could say a port. Saying so at once, with
+                // its own log, is the difference between a diagnosable failure and half
+                // a minute of nothing.
+                return Err(Error::new(
+                    Code::Internal,
+                    format!(
+                        "web: the server exited ({status}) before reporting a listening port; see {}",
+                        log_path.display()
+                    ),
+                )
+                .with_param("log", log_path.display().to_string()));
+            }
+        }
         if Instant::now() >= deadline {
             return Err(Error::new(
                 Code::Internal,
                 format!(
-                    "web: the server did not report a listening port within {} seconds; it was stopped",
-                    timeout.as_secs()
+                    "web: the server did not report a listening port within {} seconds; it was stopped; see {}",
+                    timeout.as_secs(),
+                    log_path.display()
                 ),
             )
             .with_param("log", log_path.display().to_string()));
@@ -592,7 +643,8 @@ mod tests {
         let temp = o824_fixtures::TempDir::new("o824-webform-").expect("temp dir");
         let log = temp.path().join("empty.log");
         std::fs::File::create(&log).expect("create");
-        let error = wait_for_ready(&log, Duration::from_millis(150)).expect_err("must time out");
+        let error =
+            wait_for_ready(&log, Duration::from_millis(150), None).expect_err("must time out");
         assert!(
             error.fallback.contains("did not report a listening port"),
             "{error}"
@@ -609,7 +661,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(120));
             append(&path, "dsh web: http://127.0.0.1:21999/?token=late");
         });
-        let url = wait_for_ready(&log, Duration::from_secs(5)).expect("ready");
+        let url = wait_for_ready(&log, Duration::from_secs(5), None).expect("ready");
         assert_eq!(port_of(&url), Some(21999));
     }
 
@@ -627,10 +679,18 @@ mod tests {
         let home = temp.path().join("home");
         std::fs::create_dir_all(&home).expect("mkdir");
 
-        let started = start(&package, &home, temp.path(), None, Duration::from_secs(60))
-            .expect("the web form must start");
-        assert!(started.port > 0, "a port was chosen: {started:?}");
-        assert!(started.url.contains(&started.port.to_string()));
+        let started = start(
+            &package,
+            &home,
+            temp.path(),
+            None,
+            Duration::from_secs(60),
+            &mut |_record: &ProcessRecord| Ok(()),
+        )
+        .expect("the web form must start");
+        let port = started.port.expect("the default start prints a port");
+        assert!(port > 0, "a real port was chosen: {started:?}");
+        assert!(started.url.contains(&port.to_string()));
 
         // The record is what a later stop relies on, and it must not carry the token.
         assert!(!started.record.log_path.contains("token"));

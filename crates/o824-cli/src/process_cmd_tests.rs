@@ -183,7 +183,7 @@ fn start_refuses_when_the_home_already_has_a_live_instance() {
 
     assert_eq!(
         code,
-        crate::exit_code_of(Some(&o824_errs::Error::new(Code::Busy, "x"))),
+        crate::exit_code_of(Some(&o824_errs::Error::new(Code::ConcurrentInstance, "x"))),
         "{stderr}"
     );
     assert!(stderr.contains("already running"), "{stderr}");
@@ -419,14 +419,8 @@ fn status_reports_a_desktop_instance_started_outside_the_kernel() {
         seen.contains("desktop"),
         "the running desktop is listed: {seen}"
     );
-    assert!(seen.contains(&child_id_hint()), "{seen}");
-}
-
-/// A pid-shaped hint for the assertion above; the exact pid is read from the process.
-fn child_id_hint() -> String {
-    // Any digit run is enough: the point is that a pid column is filled in, and the
-    // listing came from the live process table rather than a record.
-    "pid=".to_owned()
+    assert!(seen.contains("pid="), "the listing names a pid: {seen}");
+    assert!(seen.contains("started outside this kernel"), "{seen}");
 }
 
 /// A record whose process is already gone — the state after a crash — is not a failure
@@ -451,6 +445,93 @@ fn stop_of_an_already_dead_record_succeeds_and_cleans_up() {
     let after = o824_state::load(&std::path::Path::new(&root).join(o824_state::STATE_FILE_NAME))
         .expect("load");
     assert!(after.processes.is_empty(), "the stale record is gone");
+}
+
+/// T1: the creation-time half of the identity check must be able to fail. A record with
+/// the right image and a wrong creation time names a different process, and that is the
+/// whole point of storing the time.
+#[test]
+fn a_record_with_the_right_image_but_a_wrong_creation_time_is_refused() {
+    let mut stand_in = spawn_stand_in();
+    let image = image_of_stand_in(&mut stand_in);
+    let pid = stand_in.id();
+
+    let mut record = record_for("web", pid, &image, "D:\\home");
+    assert!(
+        crate::process_cmd::is_alive(&record),
+        "the record captured from the live process matches it"
+    );
+    record.created += 1;
+    let refused = !crate::process_cmd::is_alive(&record);
+
+    let _ = stand_in.kill();
+    let _ = stand_in.wait();
+
+    assert!(refused, "a wrong creation time must not match");
+}
+
+/// T2: this test used to return before reaching the branch it names. The port is now
+/// really held, by this process, and the record names this process — so the "the owner
+/// is the process itself" branch is the one that runs.
+#[test]
+fn a_live_process_that_owns_its_port_is_not_a_leftover() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let mut record = record_for("web", std::process::id(), "", "D:\\home");
+    record.port = Some(port);
+
+    let warning = crate::process_cmd::leftover_warning(&record);
+
+    assert!(
+        warning.is_none(),
+        "the process owns its port, so there is nothing left behind: {warning:?}"
+    );
+}
+
+/// T3/I2: the guard is about the home, not the label, and it is decided from the state
+/// without starting anything — an earlier version of this test launched a real server.
+#[test]
+fn the_guard_reads_the_home_not_the_label() {
+    let mut stand_in = spawn_stand_in();
+    let image = image_of_stand_in(&mut stand_in);
+    let pid = stand_in.id();
+
+    let shared = "D:\\home-shared";
+    let other = "D:\\home-other";
+    let mut state = State::default();
+    state.remember_process(record_for("web-earlier", pid, &image, shared));
+
+    let blocked = crate::process_cmd::blocking_record(&state, std::path::Path::new(shared));
+    let free = crate::process_cmd::blocking_record(&state, std::path::Path::new(other));
+
+    let _ = stand_in.kill();
+    let _ = stand_in.wait();
+
+    let blocked = blocked.expect("the same home is blocked whatever the label");
+    assert_eq!(blocked.install_id, "web-earlier");
+    assert!(
+        free.is_none(),
+        "a different home is not blocked by that record"
+    );
+}
+
+/// I7: the four commands answer --help, as the CLI promises.
+#[test]
+fn the_process_commands_answer_help() {
+    for command in [
+        crate::process_cmd::start,
+        crate::process_cmd::stop,
+        crate::process_cmd::status,
+        crate::process_cmd::logs,
+    ] {
+        let (code, stdout, stderr) = run(command, &["--help"]);
+        assert_eq!(code, 0, "{stderr}");
+        assert!(stdout.contains("o824"), "{stdout}");
+        assert!(
+            stdout.contains("--install") || stdout.contains("--all"),
+            "{stdout}"
+        );
+    }
 }
 
 /// The image of the spawned stand-in, read after it is surely running.

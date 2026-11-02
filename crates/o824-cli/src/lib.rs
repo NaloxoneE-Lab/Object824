@@ -58,7 +58,10 @@ pub const fn exit_code_for(code: Code) -> i32 {
         Code::Usage | Code::InstallDir => EXIT_USAGE,
         Code::ConfirmationRequired => EXIT_CONFIRMATION_REQUIRED,
         Code::Permission => EXIT_PERMISSION,
-        Code::StateDrift => EXIT_STATE_DRIFT,
+        // A port someone else holds and a second form on one home are both statements
+        // about the machine's state, not kernel failures: exit 5 says "the state you
+        // asked for is not the state you have", which is what a script needs.
+        Code::StateDrift | Code::PortInUse | Code::ConcurrentInstance => EXIT_STATE_DRIFT,
         Code::Network => EXIT_NETWORK,
         Code::Busy => EXIT_BUSY,
         _ => EXIT_INTERNAL,
@@ -172,6 +175,8 @@ mod tests {
                     | Code::StateDrift
                     | Code::Network
                     | Code::Busy
+                    | Code::PortInUse
+                    | Code::ConcurrentInstance
             ) {
                 assert_ne!(mapped, 8, "{code} must not fall through to 8");
             } else {

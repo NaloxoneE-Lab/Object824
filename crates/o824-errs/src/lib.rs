@@ -53,6 +53,8 @@ pub enum Code {
     VersionDrift,
     /// A port a start asked for is already being listened on.
     PortInUse,
+    /// Another form is already running against the same DSH home.
+    ConcurrentInstance,
     /// A mutating command could not obtain the confirmation it needs.
     ConfirmationRequired,
     /// A repair that must copy a dependency tree found too little free space.
@@ -92,6 +94,7 @@ impl Code {
         Code::HalfInstall,
         Code::VersionDrift,
         Code::PortInUse,
+        Code::ConcurrentInstance,
         Code::ConfirmationRequired,
         Code::DiskFull,
         Code::PlanUnknown,
@@ -122,6 +125,7 @@ impl Code {
             Code::HalfInstall => "E_HALF_INSTALL",
             Code::VersionDrift => "E_VERSION_DRIFT",
             Code::PortInUse => "E_PORT_IN_USE",
+            Code::ConcurrentInstance => "E_CONCURRENT_INSTANCE",
             Code::ConfirmationRequired => "E_CONFIRMATION_REQUIRED",
             Code::DiskFull => "E_DISK_FULL",
             Code::PlanUnknown => "E_PLAN_UNKNOWN",
@@ -264,6 +268,7 @@ mod tests {
             "E_HALF_INSTALL",
             "E_VERSION_DRIFT",
             "E_PORT_IN_USE",
+            "E_CONCURRENT_INSTANCE",
             "E_CONFIRMATION_REQUIRED",
             "E_DISK_FULL",
             "E_PLAN_UNKNOWN",
