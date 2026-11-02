@@ -262,9 +262,10 @@ fn a_running_desktop_instance_is_named_before_a_second_form_starts() {
         .spawn()
         .expect("spawn the stand-in host");
 
+    let home = default_home();
     let mut warning = None;
     for _ in 0..100 {
-        warning = crate::process_cmd::desktop_already_running();
+        warning = crate::process_cmd::desktop_already_running(&home);
         if warning.is_some() {
             break;
         }
@@ -532,6 +533,21 @@ fn the_process_commands_answer_help() {
             "{stdout}"
         );
     }
+}
+
+/// M4: the warning is about the default home, which is the one a desktop instance uses.
+#[test]
+fn the_desktop_warning_is_silent_for_a_different_home() {
+    let elsewhere = std::path::Path::new(r"D:\not-the-default-home");
+    assert!(
+        crate::process_cmd::desktop_already_running(elsewhere).is_none(),
+        "a temporary home shares nothing with a desktop instance"
+    );
+}
+
+/// The default DSH home, as the machine resolves it.
+fn default_home() -> std::path::PathBuf {
+    o824_discovery::resolve_home(None)
 }
 
 /// The image of the spawned stand-in, read after it is surely running.

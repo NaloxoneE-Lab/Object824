@@ -13,7 +13,7 @@ use o824_errs::{Code, Error};
 use o824_state::ProcessRecord;
 
 use crate::flags::{FlagSet, FlagSpec};
-use crate::{exit_code_of, EXIT_OK};
+use crate::{exit_code_of, EXIT_OK, EXIT_STATE_DRIFT};
 
 /// The help text for the process subcommands.
 pub const USAGE: &str = "\
@@ -151,7 +151,7 @@ pub fn start(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
     // §21.4: the forms share one DSH home, so a desktop instance that is already
     // running means two runtimes on the same sessions. Warn rather than refuse — the
     // user may know exactly why they are starting a second one.
-    if let Some(warning) = desktop_already_running() {
+    if let Some(warning) = desktop_already_running(&context.home) {
         let _ = writeln!(stderr, "{warning}");
     }
 
@@ -413,6 +413,11 @@ fn stop_all(data_root: Option<PathBuf>, stdout: &mut dyn Write, stderr: &mut dyn
     if stopped == 0 && refused == 0 {
         let _ = writeln!(stdout, "nothing running");
     }
+    if refused > 0 {
+        // Something is still running and this kernel will not stop it. Reporting success
+        // would be the one thing a cleanup command must not do.
+        return EXIT_STATE_DRIFT;
+    }
     EXIT_OK
 }
 
@@ -495,8 +500,10 @@ pub fn status(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -
             "{:<8} {:<8} pid={:<7} port={:<6} {}",
             record.install_id, state_word, record.pid, port, record.log_path
         );
-        if let Some(url) = o824_webform::url_from_log(std::path::Path::new(&record.log_path)) {
-            let _ = writeln!(stdout, "         {url}");
+        if is_alive(record) {
+            if let Some(url) = o824_webform::url_from_log(std::path::Path::new(&record.log_path)) {
+                let _ = writeln!(stdout, "         {url}");
+            }
         }
         if !is_alive(record) {
             if let Some(warning) = leftover_warning(record) {
@@ -656,7 +663,16 @@ pub fn leftover_warning(record: &ProcessRecord) -> Option<String> {
 /// The forms share one DSH home, so a second runtime sees the same sessions. The
 /// kernel warns and lets the user decide: refusing would be wrong for someone who
 /// knows why, and silence would be wrong for everyone else.
-pub fn desktop_already_running() -> Option<String> {
+pub fn desktop_already_running(home: &Path) -> Option<String> {
+    // Only the default home is shared with a desktop instance the user launched: a start
+    // against an explicit temporary home shares nothing with it.
+    let default_home = o824_discovery::resolve_home(None);
+    if !same_home(
+        &home.display().to_string(),
+        &default_home.display().to_string(),
+    ) {
+        return None;
+    }
     let hosts = o824_discovery::host_processes();
     let first = hosts.first()?;
     let count = if hosts.len() == 1 {
