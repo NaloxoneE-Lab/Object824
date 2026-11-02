@@ -73,7 +73,7 @@ export function describeTranscript(argv, packageDir) {
   if (looksLikeAPath) {
     const absolute = resolve(value);
     args[position + 1] = `${GUEST_DIR}/${basename(absolute)}`;
-    return { argv: args, preopen: dirname(absolute) };
+    return { argv: args, preopen: dirname(absolute), hostFile: absolute };
   }
 
   if (!BUNDLED_TRANSCRIPTS.includes(value)) {
@@ -82,5 +82,9 @@ export function describeTranscript(argv, packageDir) {
     );
   }
   args[position + 1] = `${GUEST_DIR}/${value}.jsonl`;
-  return { argv: args, preopen: join(packageDir, 'transcripts') };
+  return {
+    argv: args,
+    preopen: join(packageDir, 'transcripts'),
+    hostFile: join(packageDir, 'transcripts', `${value}.jsonl`),
+  };
 }

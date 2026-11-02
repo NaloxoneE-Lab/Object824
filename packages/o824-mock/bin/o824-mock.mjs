@@ -64,6 +64,13 @@ try {
   throw error;
 }
 
+// The transcript is checked here, on the host, because WASI's own failure for a
+// preopen directory that does not exist is a C-level "UVWASI_ENOENT" and a stack
+// trace. A developer reading that learns nothing about their own path.
+if (!existsSync(invocation.hostFile)) {
+  fail(`o824-mock: cannot read the transcript ${invocation.hostFile}: no such file`, 8);
+}
+
 if (!existsSync(wasmPath)) {
   fail(
     `o824-mock: ${wasmPath} is missing. Reinstall the package, or run ` +

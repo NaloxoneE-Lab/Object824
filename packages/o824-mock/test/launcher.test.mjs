@@ -63,6 +63,17 @@ test('other flags pass through unchanged', () => {
   ]);
 });
 
+test('the host file is named so the launcher can check it before running', () => {
+  assert.equal(
+    describeTranscript(['--transcript', 'doctor-clean'], pkg).hostFile,
+    join(pkg, 'transcripts', 'doctor-clean.jsonl'),
+  );
+  assert.equal(
+    describeTranscript(['--transcript', '/work/s.jsonl'], pkg).hostFile,
+    resolve('/work/s.jsonl'),
+  );
+});
+
 test('an unknown name is refused here, not by the guest', () => {
   assert.throws(
     () => describeTranscript(['--transcript', 'nope'], pkg),

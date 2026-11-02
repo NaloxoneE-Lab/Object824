@@ -139,6 +139,23 @@ test('a closed input does not crash the process', options, () => {
   assert.equal(result.stdout.length, 0);
 });
 
+test('a transcript under a directory that does not exist is a sentence, not a stack', options, () => {
+  const nowhere = join(repoRoot, 'no-such-directory-for-the-mock', 'session.jsonl');
+  const result = run(['--transcript', nowhere], []);
+  assert.equal(result.status, 8, result.stderr);
+  assert.match(result.stderr, /no-such-directory-for-the-mock/);
+  assert.ok(!result.stderr.includes('    at '), 'a stack trace is not an error message');
+  assert.ok(!result.stderr.includes('UVWASI'), 'the WASI host error must not leak');
+});
+
+test('a transcript that is not there is named in the error', options, () => {
+  const missing = join(repoRoot, 'spec', 'transcripts', 'definitely-not-here.jsonl');
+  const result = run(['--transcript', missing], []);
+  assert.equal(result.status, 8, result.stderr);
+  assert.match(result.stderr, /definitely-not-here/);
+  assert.ok(!result.stderr.includes('    at '));
+});
+
 test('the wasm and the host binary agree', options, () => {
   const hostBinary = join(repoRoot, 'target', 'release', 'o824-mock.exe');
   if (!existsSync(hostBinary)) {
