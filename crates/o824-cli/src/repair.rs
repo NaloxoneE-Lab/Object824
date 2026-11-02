@@ -138,15 +138,6 @@ pub fn run_with(
         return EXIT_OK;
     }
 
-    if flags.flag("with-install") {
-        let error = Error::new(
-            Code::Unsupported,
-            "o824 repair: --with-install runs the host's own pnpm, which arrives with the              staged-install work; drop the flag and re-run the plan",
-        );
-        let _ = writeln!(stderr, "{error}");
-        return exit_code_of(Some(&error));
-    }
-
     if plan.steps.is_empty() {
         return nothing_to_do(stdout, stderr, &envelope, &plan, flags.flag("json"));
     }

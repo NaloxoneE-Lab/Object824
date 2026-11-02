@@ -70,10 +70,31 @@ o824 0.1.0 (commit f4c7751, built 2026-11-01T19:59:48Z) windows/amd64
 | 4 | 可发布：单 exe，干净 Windows 上六个子命令 | ✅ 本机实测；**"干净 Windows"未验**（见下） |
 | 5 | 可维护：CI 全绿且真在 GitHub 跑过 | ⚠️ **CI 从未在 GitHub 上跑过**（仓库没有远端） |
 
+## 补记（v0.1.1）：`--with-install` 已实现并真机验证
+
+原先拒绝的 `reinstall-profile` 现在真的执行，判据由 `scripts/with-install-check.ps1` 钉住（真实 app + 临时 home，跑宿主自带的 pnpm）：
+
+```
+doctor reports F01                 PASS
+the plan is one reinstall step     PASS
+the repair applies                 PASS
+the profile diagnoses clean        PASS
+a dependency tree was swapped in   PASS   (84 top-level packages)
+no staging copy is left behind     PASS
+no old tree is left behind         PASS
+the journal records done           PASS
+the journal records the step note  PASS
+```
+
+实现按 Go 的顺序：**空间预检 → 复制 profile 到 `<profile>.o824-stage`（跳过 node_modules 和宿主的点目录）→ 用宿主 exe 以 `ELECTRON_RUN_AS_NODE` 跑它自带的 pnpm `install --frozen-lockfile` → 要求副本里真的出现非空 `node_modules` → 两次改名交换 → 清理**。任一步失败都在交换之前，真实 profile 一个字节都没动；交换后的清理失败只报告，不回滚（为了收拾干净而重新弄坏 profile 是错的取舍）。
+
+两个实现细节值得记：
+- 子进程有 **15 分钟**上限（`execx` 新增了带 deadline 的 runner：边读管道边等，超时就杀，避免 pnpm 挂死修复流程）；
+- `--frozen-lockfile` **只在副本里真有 lockfile 时**才加（新 profile 没有 lockfile 是合法的，pnpm 会拒绝这个flag）。
+
 ## 明确未做
 
 1. **CI 没有远端可跑**。`.github/workflows/ci.yml` 就位，但仓库至今没有 GitHub 远端。这是唯一一条从 G0 悬到现在的判据。
-2. **`--with-install` / `reinstall-profile`**：在副本里跑宿主 pnpm、校验后两次改名交换。现在明确返回 `E_UNSUPPORTED`。
 3. **"干净 Windows"冒烟**：本机就是唯一验证过的机器（Windows，无 MSVC，`windows-gnu` 宿主）。
 4. **P1 剩余项**（发现算法补层、形态适配、共存检测）：按路线图，迁移完成之后才做。
 

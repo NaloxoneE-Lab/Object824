@@ -187,6 +187,7 @@ name = "o824-apply"
 version = "0.1.0"
 dependencies = [
  "o824-errs",
+ "o824-execx",
  "o824-fixtures",
  "o824-lock",
  "o824-model",

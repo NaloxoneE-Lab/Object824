@@ -152,7 +152,7 @@ C    golden fixtures 八棵树 ──  verify  snapshot  cli  mock ──  diagn
 | `verify` | M1 | ✅ 七个检查 | | **G1** |
 | `plan` | M2 | ✅ 步骤映射 + TTL + id + 指纹 | | **G2** |
 | `snapshot` | M2 | ✅ create/create_if_changed/list/restore，保留 5 份 | | |
-| `apply` | M3 | ✅ 原生 junction、行级白名单、快照回滚、journal；`--with-install` 明确拒绝 | | **G3** |
+| `apply` | M3 | ✅ 原生 junction、行级白名单、快照回滚、journal、副本安装（`--with-install`，v0.1.1 补） | | **G3** |
 | `cli` | M3 | ✅ `discover`/`doctor`/`repair`/`snapshot`/`rollback`，退出码 0–8，与 Go 逐字相同 | | **G3** |
 | `protocol` `mock` | M4 | ✅ 帧编解码 + transcript 回放，3 个录制逐帧一致 | | **G4** |
 | `diagnose` | M5 | ✅ zip + 默认脱敏，真机验证无绝对路径残留 | | **G5** |

@@ -9,6 +9,7 @@ description = "executes a plan: snapshot first, then journal, then steps, then r
 
 [dependencies]
 o824-errs.workspace = true
+o824-execx.workspace = true
 o824-lock.workspace = true
 o824-model.workspace = true
 o824-plan.workspace = true

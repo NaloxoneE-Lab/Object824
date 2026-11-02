@@ -28,6 +28,10 @@
 
 pub mod allow_builds;
 pub mod journal;
+// The free-space precheck calls the Windows API, which has no standard-library
+// equivalent; the module keeps its raw pointers to itself.
+#[allow(unsafe_code)]
+pub mod reinstall;
 // Installing a reparse point is the one thing the standard library cannot do;
 // the module keeps its raw pointers to itself and everything below it is safe.
 #[allow(unsafe_code)]
@@ -258,11 +262,7 @@ fn execute(data_root: &Path, install_id: &str, root: &Path, step: &mut Step) -> 
         o824_plan::KIND_ALLOW_BUILDS => allow_builds(step),
         o824_plan::KIND_RESTORE_SNAPSHOT => restore_snapshot(data_root, install_id, root, step),
         o824_plan::KIND_REPLACE_FILE => replace_file(step),
-        o824_plan::KIND_REINSTALL_PROFILE => Err(Error::new(
-            Code::Unsupported,
-            "apply: the reinstall-profile step needs the host's pnpm, which arrives with the \
-             --with-install work; drop --with-install and re-run the plan",
-        )),
+        o824_plan::KIND_REINSTALL_PROFILE => reinstall::reinstall_profile(step),
         other => Err(internal(format!("apply: unknown step kind {other:?}"))),
     }
 }

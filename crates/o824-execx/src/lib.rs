@@ -23,8 +23,12 @@
 
 #![forbid(unsafe_code)]
 
+pub mod timed;
+
 use std::path::Path;
 use std::process::{Command, Stdio};
+
+pub use timed::run_with_deadline;
 
 use o824_errs::{Code, Error};
 
@@ -159,8 +163,7 @@ fn display_dir(dir: Option<&Path>) -> String {
     }
 }
 
-#[cfg(windows)]
-fn suppress_console_window(command: &mut Command) {
+pub(crate) fn suppress_console_window(command: &mut Command) {
     use std::os::windows::process::CommandExt;
 
     /// Windows' CREATE_NO_WINDOW: a GUI process has no console of its own, so
@@ -171,7 +174,7 @@ fn suppress_console_window(command: &mut Command) {
 }
 
 #[cfg(not(windows))]
-fn suppress_console_window(_command: &mut Command) {}
+pub(crate) fn suppress_console_window(_command: &mut Command) {}
 
 #[cfg(test)]
 mod tests {
