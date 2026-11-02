@@ -132,3 +132,63 @@ jobs:
             Select-Object -First 1
           node scripts/verify-mock-release.mjs $tgz.FullName
           if ($LASTEXITCODE -ne 0) { throw "the release asset does not work as installed" }
+
+  # The SDK is TypeScript compiled to ESM, tested against the mock (a real protocol
+  # server) rather than a hand-written fake. Node 20 and 24 for the same reason as the
+  # mock: the published package must work on the oldest Node it claims.
+  sdk:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            node: 20
+          - os: ubuntu-latest
+            node: 24
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+      - uses: Swatinem/rust-cache@v2
+
+      # The tests drive packages/o824-mock, so it has to exist first.
+      - name: Build the mock
+        shell: pwsh
+        run: pwsh -File scripts/build-mock-package.ps1
+
+      - name: Build the SDK
+        working-directory: packages/o824-sdk
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+      - name: Test the SDK
+        shell: pwsh
+        working-directory: packages/o824-sdk
+        run: |
+          node --test "test/*.test.mjs" 2>&1 | Tee-Object -FilePath sdk-test.txt
+          $code = $LASTEXITCODE
+          $passed = 0
+          $match = Select-String -Path sdk-test.txt -Pattern 'pass (\d+)' | Select-Object -Last 1
+          if ($match) { $passed = [int]$match.Matches[0].Groups[1].Value }
+          Write-Output "passing tests: $passed (at least 18 expected)"
+          if ($passed -lt 18) {
+            Write-Output "::error::only $passed tests ran; the suite did not execute"
+            $code = 1
+          }
+          if ($code -ne 0) {
+            $lines = Get-Content sdk-test.txt
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+              if ($lines[$i] -match '^\s*✖|not ok|AssertionError|Error \[') {
+                $until = [Math]::Min($i + 3, $lines.Count - 1)
+                for ($j = $i; $j -le $until; $j++) { Write-Output "::error::$($lines[$j].Trim())" }
+                $i = $until
+              }
+            }
+          }
+          exit $code

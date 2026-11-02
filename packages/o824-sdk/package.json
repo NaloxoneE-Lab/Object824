@@ -1,0 +1,38 @@
+{
+  "name": "o824-sdk",
+  "version": "0.1.0",
+  "description": "A thin TypeScript client for the O824 kernel's stdio protocol: framing, request correlation, job events, cancellation.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "test": "node --test \"test/*.test.mjs\"",
+    "prepack": "node scripts/require-build.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^5.6.0"
+  },
+  "license": "MIT",
+  "keywords": [
+    "o824",
+    "dsh",
+    "json-rpc",
+    "lsp",
+    "sdk"
+  ]
+}

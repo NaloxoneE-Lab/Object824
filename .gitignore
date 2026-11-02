@@ -17,3 +17,8 @@
 /packages/o824-mock/o824-mock.wasm
 /packages/o824-mock/transcripts/
 /dist/
+
+# The SDK compiles from TypeScript: dist/ is a build product, rebuilt by `npm run
+# build` and by CI, never committed.
+/packages/o824-sdk/dist/
+/packages/o824-sdk/node_modules/
