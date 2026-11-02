@@ -49,6 +49,8 @@ pub enum Code {
     PnpmBuildBlocked,
     /// A journal records an install that is neither done nor failed.
     HalfInstall,
+    /// Two installed forms of DSH are at different versions while sharing one home.
+    VersionDrift,
     /// A mutating command could not obtain the confirmation it needs.
     ConfirmationRequired,
     /// A repair that must copy a dependency tree found too little free space.
@@ -86,6 +88,7 @@ impl Code {
         Code::ProfileParse,
         Code::PnpmBuildBlocked,
         Code::HalfInstall,
+        Code::VersionDrift,
         Code::ConfirmationRequired,
         Code::DiskFull,
         Code::PlanUnknown,
@@ -114,6 +117,7 @@ impl Code {
             Code::ProfileParse => "E_PROFILE_PARSE",
             Code::PnpmBuildBlocked => "E_PNPM_BUILD_BLOCKED",
             Code::HalfInstall => "E_HALF_INSTALL",
+            Code::VersionDrift => "E_VERSION_DRIFT",
             Code::ConfirmationRequired => "E_CONFIRMATION_REQUIRED",
             Code::DiskFull => "E_DISK_FULL",
             Code::PlanUnknown => "E_PLAN_UNKNOWN",
@@ -254,6 +258,7 @@ mod tests {
             "E_PROFILE_PARSE",
             "E_PNPM_BUILD_BLOCKED",
             "E_HALF_INSTALL",
+            "E_VERSION_DRIFT",
             "E_CONFIRMATION_REQUIRED",
             "E_DISK_FULL",
             "E_PLAN_UNKNOWN",

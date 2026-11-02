@@ -110,7 +110,25 @@ pub fn run_with(
         Some(root) => root.to_path_buf(),
         None => o824_state::data_root(None),
     };
-    let envelope = o824_verify::doctor(&install, &data_root);
+    let mut envelope = o824_verify::doctor(&install, &data_root);
+
+    // F11 is a statement about the machine, not about this installation: two forms
+    // sharing one DSH home at different versions. It is appended here because the
+    // per-installation envelope has nowhere else to learn about the other forms.
+    //
+    // `--root` means "diagnose this tree in isolation" — the lab and the golden
+    // fixtures rely on it — so the machine is only consulted when the installation
+    // came from the machine.
+    if flags.value("root").is_none() {
+        let machine = o824_discovery::discover(&o824_discovery::Options {
+            home: Some(install.home.clone()),
+            ..Default::default()
+        })
+        .unwrap_or_default();
+        if let Some(drift) = o824_verify::version_drift(&machine) {
+            envelope.findings.push(drift);
+        }
+    }
 
     if flags.flag("json") {
         let Ok(text) = serde_json::to_string(&envelope) else {

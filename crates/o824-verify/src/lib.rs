@@ -28,6 +28,7 @@ pub mod profile;
 
 use std::path::{Path, PathBuf};
 
+use o824_errs::Code;
 use o824_model::{Envelope, Finding, Install};
 use serde_json::{Map, Value};
 
@@ -57,6 +58,73 @@ pub const REPAIR_KIND_MANUAL: &str = "manual";
 ///
 /// Findings from different checks are concatenated and never deduplicated: two
 /// profiles with the same fault are two findings, because they are two repairs.
+/// Two forms of DSH sharing one home at different versions.
+///
+/// This is the one check that cannot live inside a per-installation diagnosis: it is a
+/// statement about the machine. The desktop application ships its runtime inside
+/// `app.asar`, the web form is a global npm package, and they share `~/.dsh` — so an
+/// upgrade of one and not the other leaves plugins loaded by two runtimes that expect
+/// different internals. The catalogue's F11 asks for exactly this, and the reference
+/// machine is an example: desktop `0.2.1-rc.3`, the global package `0.2.1-rc.5`.
+///
+/// A form whose version is unknown does not participate: "I could not read it" is not
+/// a drift, and reporting it as one would train people to ignore the warning.
+pub fn version_drift(installs: &[Install]) -> Option<Finding> {
+    let mut versions: std::collections::BTreeMap<String, String> =
+        std::collections::BTreeMap::new();
+    for install in installs {
+        let version = install.version.trim();
+        if version.is_empty() {
+            continue;
+        }
+        // Two installations of the same kind: keep the first, which is the one discovery
+        // ranked first.
+        versions
+            .entry(install.kind.clone())
+            .or_insert_with(|| version.to_owned());
+    }
+    if versions.len() < 2 {
+        return None;
+    }
+    let distinct: std::collections::BTreeSet<&String> = versions.values().collect();
+    if distinct.len() < 2 {
+        return None;
+    }
+
+    // One param, and it is the whole story: a renderer can lay the versions out as a
+    // list without knowing this check exists. Repeating them as `version.desktop`
+    // would make the human output read like a dump.
+    let mut params = Map::new();
+    params.insert(
+        "versions".to_owned(),
+        Value::Object(
+            versions
+                .iter()
+                .map(|(kind, version)| (kind.clone(), Value::from(version.clone())))
+                .collect(),
+        ),
+    );
+    let rendered: Vec<String> = versions
+        .iter()
+        .map(|(kind, version)| format!("{kind} {version}"))
+        .collect();
+
+    Some(Finding {
+        check_id: "F11".to_owned(),
+        severity: o824_model::Severity::Warning,
+        code: Code::VersionDrift,
+        category: o824_model::Category::Install,
+        params,
+        detail: String::new(),
+        fallback_message: format!(
+            "the installed forms are at different versions ({}); a shared DSH home means they \
+             load each other's data with different runtimes",
+            rendered.join(", ")
+        ),
+        repair: None,
+    })
+}
+
 pub fn doctor(install: &Install, data_root: &Path) -> Envelope {
     let root = if install.home.is_empty() {
         PathBuf::from(&install.root)
@@ -320,5 +388,60 @@ mod tests {
             health: "ok".to_owned(),
             home: root.display().to_string(),
         }
+    }
+
+    /// The smallest installation the drift check needs: a kind, a version, a root.
+    fn install_of(kind: &str, version: &str, root: &str) -> Install {
+        Install {
+            install_id: String::new(),
+            kind: kind.to_owned(),
+            root: root.to_owned(),
+            version: version.to_owned(),
+            profiles: Vec::new(),
+            health: "ok".to_owned(),
+            home: String::new(),
+        }
+    }
+
+    #[test]
+    fn two_forms_at_different_versions_are_a_drift() {
+        let installs = vec![
+            install_of("desktop", "0.2.1-rc.3", r"D:\Programs\DeepSeek Harness"),
+            install_of("web", "0.2.1-rc.5", r"C:\Users\demo\AppData\Roaming\npm"),
+        ];
+        let finding = version_drift(&installs).expect("the versions differ");
+        assert_eq!(finding.check_id, "F11");
+        assert_eq!(finding.code, Code::VersionDrift);
+        assert_eq!(finding.severity, o824_model::Severity::Warning);
+        assert_eq!(finding.params["versions"]["desktop"], "0.2.1-rc.3");
+        assert_eq!(finding.params["versions"]["web"], "0.2.1-rc.5");
+        assert_eq!(finding.params.len(), 1, "the map is the whole story");
+    }
+
+    #[test]
+    fn one_form_is_not_a_drift() {
+        let installs = vec![install_of("desktop", "0.2.1-rc.3", r"D:\Programs\x")];
+        assert!(version_drift(&installs).is_none());
+    }
+
+    #[test]
+    fn two_forms_at_the_same_version_are_not_a_drift() {
+        let installs = vec![
+            install_of("desktop", "0.2.1-rc.5", r"D:\Programs\x"),
+            install_of("web", "0.2.1-rc.5", r"C:\npm"),
+        ];
+        assert!(version_drift(&installs).is_none());
+    }
+
+    #[test]
+    fn a_form_with_no_version_does_not_participate() {
+        let installs = vec![
+            install_of("desktop", "", r"D:\Programs\x"),
+            install_of("web", "0.2.1-rc.5", r"C:\npm"),
+        ];
+        assert!(
+            version_drift(&installs).is_none(),
+            "an unknown version is not a drift"
+        );
     }
 }

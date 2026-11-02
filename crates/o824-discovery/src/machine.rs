@@ -34,6 +34,8 @@ pub enum Source {
     Shortcut,
     /// The bounded scan of last resort.
     Scan,
+    /// The global npm package that is the web form.
+    Web,
     /// A root the caller named explicitly.
     Explicit,
 }
@@ -56,6 +58,8 @@ pub struct Layers {
     pub shortcut: bool,
     /// Run the bounded scan of last resort.
     pub scan: bool,
+    /// Look for the global npm package that is the web form.
+    pub web: bool,
 }
 
 impl Default for Layers {
@@ -67,6 +71,7 @@ impl Default for Layers {
             process: true,
             shortcut: true,
             scan: true,
+            web: true,
         }
     }
 }
@@ -81,6 +86,7 @@ impl Layers {
             process: source == Source::Process,
             shortcut: source == Source::Shortcut,
             scan: source == Source::Scan,
+            web: source == Source::Web,
         }
     }
 }
@@ -112,6 +118,8 @@ pub struct Options {
     pub shortcut_dirs: Vec<PathBuf>,
     /// The directories the bounded scan walks, or empty for the defaults.
     pub scan_dirs: Vec<PathBuf>,
+    /// The global prefixes the web package is looked for in, or empty for the defaults.
+    pub web_prefixes: Vec<PathBuf>,
 }
 
 /// One discovery candidate. `registry_version` is set only for candidates found
@@ -217,6 +225,14 @@ pub fn standard_roots(options: &Options) -> Vec<SourceRoot> {
             options.shortcut_dirs.clone()
         };
         roots.extend(shortcut_roots(&dirs));
+    }
+    if options.layers.web {
+        let prefixes = if options.web_prefixes.is_empty() {
+            crate::web::global_prefixes()
+        } else {
+            options.web_prefixes.clone()
+        };
+        roots.extend(crate::web::web_roots(&prefixes));
     }
     // The scan is the last resort, and it costs its whole budget. Running it after an
     // earlier layer already answered would spend 400 ms on every command to add a
@@ -746,10 +762,12 @@ mod tests {
                 process: false,
                 shortcut: false,
                 scan: true,
+                web: false,
             },
             state_path: Some(state_path),
             shortcut_dirs: Vec::new(),
             scan_dirs: vec![store.path().join("elsewhere")],
+            web_prefixes: Vec::new(),
         };
 
         let candidates = candidate_roots(&options);
@@ -777,10 +795,12 @@ mod tests {
                 process: false,
                 shortcut: false,
                 scan: false,
+                web: false,
             },
             state_path: Some(state_path),
             shortcut_dirs: Vec::new(),
             scan_dirs: Vec::new(),
+            web_prefixes: Vec::new(),
         };
 
         let candidates = candidate_roots(&options);
@@ -818,10 +838,12 @@ mod tests {
                 process: false,
                 shortcut: false,
                 scan: false,
+                web: false,
             },
             state_path: Some(state_path),
             shortcut_dirs: Vec::new(),
             scan_dirs: Vec::new(),
+            web_prefixes: Vec::new(),
         };
 
         let candidates = candidate_roots(&options);

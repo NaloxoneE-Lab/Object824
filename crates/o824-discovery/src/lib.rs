@@ -36,6 +36,9 @@ pub mod shortcuts;
 // The bounded scan: pure filesystem work with a time budget, no Windows API.
 pub mod scan;
 
+// The web form: a global npm package rather than an installed application.
+pub mod web;
+
 pub use machine::{
     candidate_roots, dedupe_key, discover, fixed_volumes, parse_display_name_version,
     registry_roots, sorted_unique_roots, standard_roots, state_roots, volume_roots, Layers,
@@ -44,6 +47,7 @@ pub use machine::{
 pub use processes::{host_processes, running_host_roots, RunningHost};
 pub use scan::{default_scan_dirs, scan_roots, DEFAULT_BUDGET, DEFAULT_MAX_ENTRIES};
 pub use shortcuts::{default_shortcut_dirs, shortcut_roots};
+pub use web::{global_prefixes, package_in_prefix, web_roots};
 
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};

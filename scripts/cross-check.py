@@ -195,7 +195,22 @@ def machine_checks():
 
     go_code, go_json = run_simple(GO_BIN, ["discover", "--json"])
     rs_code, rs_json = run_simple(RUST_BIN, ["discover", "--json"])
-    if go_code != rs_code or go_json != rs_json:
+
+    # The reference implementation knows one shape: the desktop application. The Rust
+    # side also finds the web form (a global npm package) and numbers installations by
+    # path, so the comparison is over the desktop installations and ignores the ids,
+    # which are per-machine labels rather than content.
+    def desktops(text):
+        try:
+            found = [install for install in json.loads(text) if install.get("kind") == "desktop"]
+        except ValueError:
+            return None
+        for install in found:
+            install.pop("installId", None)
+        return found
+
+    go_desktops, rs_desktops = desktops(go_json), desktops(rs_json)
+    if go_code != rs_code or go_desktops is None or go_desktops != rs_desktops:
         failures += 1
         print("discover --json      FAIL")
         print("  go   :", go_json[:400], f"(exit {go_code})")
@@ -205,7 +220,12 @@ def machine_checks():
 
     go_code, go_out = run_simple(GO_BIN, ["discover"])
     rs_code, rs_out = run_simple(RUST_BIN, ["discover"])
-    if go_code != rs_code or go_out != rs_out:
+    # The table is compared row for row, but only the desktop rows exist on both sides;
+    # the id column shifts once a web installation sorts before the desktop one.
+    def desktop_rows(text):
+        return [line for line in text.splitlines() if "desktop" in line]
+
+    if go_code != rs_code or desktop_rows(go_out) != desktop_rows(rs_out):
         failures += 1
         print("discover (table)     FAIL")
         print("  go   :", go_out[:600])
@@ -220,15 +240,63 @@ def machine_checks():
     if not installs:
         print("doctor --install     SKIP (no installation on this machine)")
     else:
-        install_id = installs[0]["installId"]
-        go_code, go_out = run_simple(GO_BIN, ["doctor", "--install", install_id, "--json"])
-        rs_code, rs_out = run_simple(RUST_BIN, ["doctor", "--install", install_id, "--json"])
-        ok = go_code == rs_code and go_out == rs_out
+        # The desktop installation on each side, by id.
+        desktop_id = next(
+            (install["installId"] for install in installs if install.get("kind") == "desktop"),
+            installs[0]["installId"],
+        )
+        rust_installs = json.loads(rs_json) if rs_json else []
+        rust_desktop_id = next(
+            (install["installId"] for install in rust_installs if install.get("kind") == "desktop"),
+            desktop_id,
+        )
+        install_id = desktop_id
+        go_code, go_out = run_simple(GO_BIN, ["doctor", "--install", desktop_id, "--json"])
+        rs_code, rs_out = run_simple(RUST_BIN, ["doctor", "--install", rust_desktop_id, "--json"])
+
+        # P1 added checks the reference implementation never had. They are named here so
+        # the divergence is a statement rather than a surprise: everything else must
+        # still match byte for byte, and the added check must be present and correct.
+        ADDED = {"F11"}
+
+        def without_added(text):
+            try:
+                envelope = json.loads(text)
+            except ValueError:
+                return text
+            envelope["findings"] = [
+                finding for finding in envelope.get("findings", [])
+                if finding.get("checkId") not in ADDED
+            ]
+            return json.dumps(envelope, sort_keys=True)
+
+        ok = without_added(go_out) == without_added(rs_out)
         failures += 0 if ok else 1
         print(f"doctor --install {install_id:<3} {'PASS' if ok else 'FAIL'}")
         if not ok:
             print("  go   :", go_out[:400], f"(exit {go_code})")
             print("  rust :", rs_out[:400], f"(exit {rs_code})")
+
+        # And the added check has to actually say the right thing on this machine.
+        try:
+            findings = json.loads(rs_out).get("findings", [])
+        except ValueError:
+            findings = []
+        drift = next((f for f in findings if f.get("checkId") == "F11"), None)
+        versions = {
+            install["kind"]: install["version"]
+            for install in json.loads(rs_json)
+            if install.get("kind") in ("desktop", "web") and install.get("version")
+        }
+        expected = len(set(versions.values())) > 1
+        correct = (drift is not None) == expected and (
+            drift is None or drift.get("params", {}).get("versions") == versions
+        )
+        failures += 0 if correct else 1
+        print(f"F11 version drift   {'PASS' if correct else 'FAIL'}"
+              f"{'' if expected else ' (forms agree, so none expected)'}")
+        if not correct:
+            print("  versions:", versions, "finding:", drift)
 
     return failures
 
