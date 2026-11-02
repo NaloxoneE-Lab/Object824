@@ -28,6 +28,38 @@ use std::time::{Duration, Instant};
 use o824_errs::{Code, Error};
 use o824_state::ProcessRecord;
 
+/// How many logs the kernel keeps: enough to look back over a session, not a leak.
+pub const KEEP_LOGS: usize = 20;
+
+/// Removes the oldest logs beyond `keep`, so a data directory does not grow forever.
+fn prune_logs(directory: &Path, keep: usize) {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return;
+    };
+    let mut logs: Vec<(std::time::SystemTime, PathBuf)> = entries
+        .flatten()
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .to_lowercase()
+                .ends_with(".log")
+        })
+        .filter_map(|entry| {
+            let modified = entry.metadata().ok()?.modified().ok()?;
+            Some((modified, entry.path()))
+        })
+        .collect();
+    if logs.len() <= keep {
+        return;
+    }
+    // Newest first; everything past `keep` goes.
+    logs.sort_by_key(|entry| std::cmp::Reverse(entry.0));
+    for (_, path) in logs.into_iter().skip(keep) {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
 /// How long a start may take before it is considered failed.
 pub const START_TIMEOUT: Duration = Duration::from_secs(30);
 /// The line `dsh --profile web` prints once it is listening.
@@ -209,10 +241,15 @@ pub fn start(
     let logs = data_root.join("logs");
     std::fs::create_dir_all(&logs)
         .map_err(|error| file_error("create the log directory", &logs, &error))?;
+    // One log per start, forever, is a slow leak in a directory users do not clean.
+    prune_logs(&logs, KEEP_LOGS);
     let stamp = o824_model::Timestamp::now()
         .to_rfc3339_seconds()
         .replace(':', "");
-    let log_path = logs.join(format!("web-{stamp}.log"));
+    // The pid keeps two starts in one second from sharing a file that `File::create`
+    // would truncate: the second would erase the first's log, and a readiness line could
+    // be read from the other instance.
+    let log_path = logs.join(format!("web-{stamp}-{}.log", std::process::id()));
     let log = std::fs::File::create(&log_path)
         .map_err(|error| file_error("create the log file", &log_path, &error))?;
     let log_for_stderr = log
@@ -304,10 +341,13 @@ fn wait_for_ready(
     loop {
         if let Ok(mut file) = std::fs::File::open(log_path) {
             let _ = file.seek(SeekFrom::Start(offset));
-            let mut text = String::new();
-            if file.read_to_string(&mut text).is_ok() {
-                offset += text.len() as u64;
-                collected.push_str(&text);
+            let mut bytes = Vec::new();
+            if file.read_to_end(&mut bytes).is_ok() {
+                offset += bytes.len() as u64;
+                // The child's output is not guaranteed to be UTF-8 — a localized Windows
+                // writes its errors in the console code page — and one such byte used to
+                // make readiness permanently unobservable.
+                collected.push_str(&String::from_utf8_lossy(&bytes));
                 if let Some(url) = ready_url(&collected) {
                     return Ok(url);
                 }
@@ -359,8 +399,8 @@ pub fn ready_url(text: &str) -> Option<String> {
 
 /// The URL a running instance printed, read back from its log.
 pub fn url_from_log(log_path: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(log_path).ok()?;
-    ready_url(&text)
+    let bytes = std::fs::read(log_path).ok()?;
+    ready_url(&String::from_utf8_lossy(&bytes))
 }
 
 /// The port a URL names.

@@ -600,8 +600,8 @@ pub fn logs(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> 
         let _ = writeln!(stderr, "{error}");
         return exit_code_of(Some(&error));
     };
-    let text = match std::fs::read_to_string(&record.log_path) {
-        Ok(text) => text,
+    let text = match std::fs::read(&record.log_path) {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
         Err(error) => {
             let error = Error::new(
                 Code::Internal,
