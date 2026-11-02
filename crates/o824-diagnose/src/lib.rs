@@ -529,9 +529,11 @@ impl Redactor {
             if !seen_paths.insert(clean.to_lowercase()) {
                 continue;
             }
-            for variant in path_variants(&clean) {
-                if seen_variants.insert(variant.clone()) {
-                    replacements.push((variant, placeholder));
+            for spelling in path_spellings(&clean) {
+                for variant in path_variants(&spelling) {
+                    if seen_variants.insert(variant.clone()) {
+                        replacements.push((variant, placeholder));
+                    }
                 }
             }
         }
@@ -560,6 +562,30 @@ impl Redactor {
         }
         data
     }
+}
+
+/// Every way the same directory can be spelled on this machine: as given, as an
+/// 8.3 short name, and as its long name.
+///
+/// The short form is not academic. GitHub's Windows runners run with
+/// `%USERPROFILE%` set to the long spelling while `%TEMP%` is the short one
+/// (`RUNNER~1`), so a redaction table that knew only the long spelling would leave
+/// the short one in the bundle. The same is true of any tree reached through a
+/// short name.
+fn path_spellings(clean: &str) -> Vec<String> {
+    let mut spellings = vec![clean.to_owned()];
+    for alternative in [platform::short_path(clean), platform::long_path(clean)]
+        .into_iter()
+        .flatten()
+    {
+        if !spellings
+            .iter()
+            .any(|spelling| spelling.eq_ignore_ascii_case(&alternative))
+        {
+            spellings.push(alternative);
+        }
+    }
+    spellings
 }
 
 /// The spellings a path can take in the archive: the native form, the
@@ -696,6 +722,63 @@ mod platform {
         }
     }
 
+    /// The 8.3 short spelling of a path, when Windows has one.
+    #[cfg(windows)]
+    pub fn short_path(path: &str) -> Option<String> {
+        use windows::core::PCWSTR;
+        use windows::Win32::Storage::FileSystem::GetShortPathNameW;
+
+        let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+        let mut buffer = vec![0u16; 512];
+        // SAFETY: `wide` is NUL-terminated and outlives the call, and `buffer` is a
+        // valid writable slice of the length passed.
+        let length =
+            unsafe { GetShortPathNameW(PCWSTR(wide.as_ptr()), Some(buffer.as_mut_slice())) };
+        if length == 0 || length as usize >= buffer.len() {
+            return None;
+        }
+        let text = String::from_utf16_lossy(&buffer[..length as usize]);
+        if text.eq_ignore_ascii_case(path) {
+            None
+        } else {
+            Some(text)
+        }
+    }
+
+    /// The long spelling of a path, when it was given as a short name.
+    #[cfg(windows)]
+    pub fn long_path(path: &str) -> Option<String> {
+        use windows::core::PCWSTR;
+        use windows::Win32::Storage::FileSystem::GetLongPathNameW;
+
+        let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+        let mut buffer = vec![0u16; 1024];
+        // SAFETY: as above — a NUL-terminated input and a writable output buffer.
+        let length =
+            unsafe { GetLongPathNameW(PCWSTR(wide.as_ptr()), Some(buffer.as_mut_slice())) };
+        if length == 0 || length as usize >= buffer.len() {
+            return None;
+        }
+        let text = String::from_utf16_lossy(&buffer[..length as usize]);
+        if text.eq_ignore_ascii_case(path) {
+            None
+        } else {
+            Some(text)
+        }
+    }
+
+    /// A build without the Windows API has no short names.
+    #[cfg(not(windows))]
+    pub fn short_path(_path: &str) -> Option<String> {
+        None
+    }
+
+    /// A build without the Windows API has no short names.
+    #[cfg(not(windows))]
+    pub fn long_path(_path: &str) -> Option<String> {
+        None
+    }
+
     /// Free bytes on the volume holding `path`, when it can be read.
     #[cfg(windows)]
     pub fn free_disk_bytes(path: &std::path::Path) -> Option<i64> {
@@ -809,21 +892,64 @@ mod tests {
     }
 
     #[test]
-    fn no_absolute_path_survives_in_a_redacted_bundle() {
-        let (store, _manifest, _names) = write_bundle("git-dep", false);
-        let path = store.path().join("bundle.zip");
-        let file = std::fs::File::open(&path).expect("open");
+    fn no_installation_path_survives_in_a_redacted_bundle() {
+        let fixture = o824_fixtures::build("git-dep").expect("fixture");
+        let store = TempDir::new("o824-diagnose-").expect("store");
+        let out = store.path().join("bundle.zip");
+        write(Options {
+            install: install_of(fixture.root()),
+            data_root: store.path().to_path_buf(),
+            out: out.clone(),
+            include_paths: false,
+            now: Timestamp::parse("2026-11-01T12:00:00Z").expect("timestamp"),
+        })
+        .expect("write");
+
+        // The three paths the redactor promises to remove, in every spelling this
+        // machine knows.
+        let mut forbidden: Vec<String> = Vec::new();
+        for path in [
+            fixture.root(),
+            std::path::Path::new(&std::env::var("USERPROFILE").unwrap_or_default()),
+        ] {
+            let clean = o824_model::path::clean(path).display().to_string();
+            forbidden.extend(path_spellings(&clean));
+        }
+
+        let file = std::fs::File::open(&out).expect("open");
         let mut archive = zip::ZipArchive::new(file).expect("read");
         for index in 0..archive.len() {
             let mut entry = archive.by_index(index).expect("entry");
             let mut text = String::new();
             std::io::Read::read_to_string(&mut entry, &mut text).expect("read");
-            assert!(
-                !text.contains("AppData") && !text.contains("o824-fixture-"),
-                "{}: {text}",
-                entry.name()
-            );
+            for path in &forbidden {
+                assert!(
+                    !text.contains(path.as_str()),
+                    "{}: still carries {path:?}
+{text}",
+                    entry.name()
+                );
+            }
         }
+    }
+
+    /// A redaction table that only knew the long spelling of a path would leave
+    /// the 8.3 spelling in the bundle — which is exactly what happens on a Windows
+    /// CI runner, where `%TEMP%` is spelled `RUNNER~1`.
+    #[test]
+    fn the_redactor_knows_the_short_spelling_of_a_path() {
+        let profile = std::env::var("USERPROFILE").unwrap_or_default();
+        if profile.is_empty() {
+            return;
+        }
+        let Some(short) = platform::short_path(&profile) else {
+            // This volume has 8.3 names disabled; nothing to check.
+            return;
+        };
+        let redactor = Redactor::new(&profile, "", "");
+        assert_eq!(redactor.redact(&short), PLACEHOLDER_ROOT);
+        // And the long spelling still works.
+        assert_eq!(redactor.redact(&profile), PLACEHOLDER_ROOT);
     }
 
     #[test]
