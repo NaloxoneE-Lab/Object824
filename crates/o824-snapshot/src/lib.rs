@@ -152,11 +152,10 @@ pub fn create(data_root: &Path, install_id: &str, root: &Path) -> Result<Snapsho
         dir: dir.display().to_string(),
         files: Vec::with_capacity(sources.len()),
     };
-    // A damaged tree still gets a snapshot, so a validation failure only costs
-    // the version.
-    if let Ok(install) = o824_discovery::validate(&clean_root) {
-        snapshot.install_version = install.version;
-    }
+    // A damaged tree still gets a snapshot, so the version is read best-effort and
+    // straight from the tree: validating the whole installation here would pull in
+    // the ambient DSH home for a field that does not need it.
+    snapshot.install_version = o824_discovery::read_version(&clean_root, None);
 
     for source in &sources {
         match copy_into(&dir, source) {

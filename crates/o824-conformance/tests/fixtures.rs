@@ -7,7 +7,10 @@ use o824_conformance::KINDS;
 #[test]
 fn the_ok_tree_validates_as_healthy() {
     let fixture = o824_fixtures::build("ok").expect("build the ok fixture");
-    let install = o824_discovery::validate(fixture.root()).expect("the ok tree must validate");
+    // The fixture root doubles as its DSH home: resolving the ambient ~/.dsh would
+    // make this assertion describe the machine, not the tree.
+    let install = o824_discovery::validate_with(fixture.root(), fixture.root(), None)
+        .expect("the ok tree must validate");
 
     assert_eq!(install.health, "ok");
     assert_eq!(install.version, "0.2.1-rc.3");

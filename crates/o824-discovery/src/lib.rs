@@ -351,7 +351,11 @@ mod tests {
     #[test]
     fn ok_fixture_validates_as_a_clean_install() {
         let fixture = o824_fixtures::build("ok").expect("build the ok fixture");
-        let install = validate(fixture.root()).expect("the ok tree must validate");
+        // The fixture root doubles as its DSH home, so the profiles come from the
+        // tree under test rather than from whatever ~/.dsh this machine happens to
+        // have — otherwise the assertion only holds on a developer's machine.
+        let install =
+            validate_with(fixture.root(), fixture.root(), None).expect("the ok tree must validate");
         assert_eq!(install.health, HEALTH_OK);
         assert_eq!(install.version, o824_fixtures::DSH_VERSION);
         assert_eq!(install.kind, KIND_DESKTOP);
