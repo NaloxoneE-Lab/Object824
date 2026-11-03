@@ -388,6 +388,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "o824-present"
+version = "0.1.0"
+dependencies = [
+ "o824-model",
+ "serde_json",
+]
+
+[[package]]
 name = "o824-protocol"
 version = "0.1.0"
 dependencies = [

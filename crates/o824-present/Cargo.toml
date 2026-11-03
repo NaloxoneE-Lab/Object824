@@ -1,0 +1,12 @@
+[package]
+name = "o824-present"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "what the UI says: the three first-use screens, and every error's next step."
+
+[dependencies]
+o824-model.workspace = true
+serde_json.workspace = true

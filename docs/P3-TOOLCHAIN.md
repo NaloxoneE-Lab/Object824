@@ -51,3 +51,39 @@
 - 展示模型：把 doctor 的 findings 变成 §20.1 那三句话（"还没装 DSH" / "可以启动" / "起不来，原因…可自动修"），以及 §20 十条约束里可测的部分（i18n 词条完整、每个错误带下一步、破坏性动作要二次确认）。
 
 Tauri 与 WPF 都吃同一份展示模型，所以这部分不会白做。
+
+---
+
+## 2026-11-03：MSVC 装好之后的结果
+
+`D:\VS\BuildTools`（MSVC 14.44.35207）+ `D:\Windows Kits\10`（SDK 10.0.26100.0）就位后：
+
+| 步骤 | 结果 |
+|---|---|
+| `rustup toolchain install stable-x86_64-pc-windows-msvc`（装进 `.toolchain`） | ✅ |
+| `rustc` 编 hello world（MSVC 目标） | ✅ 运行输出 `msvc ok` |
+| **Tauri 2.12.5 全依赖树编译**（约 400 个 crate） | ✅ |
+| `tauri-build` 生成 Windows 资源 | ✅（需要 `icons/icon.ico`，已生成） |
+| `cargo build` 产出 exe | ✅ 12 MB |
+| **运行 exe 开窗口** | ❌ `Failed to setup app: 拒绝访问 (os error 5)`（`tauri::app` setup 阶段） |
+
+排查：`APPDATA` / `LOCALAPPDATA` / `TEMP` 都可写（实测写入成功），`WEBVIEW2_USER_DATA_FOLDER` 也指到了可写目录，仍然拒绝。**最可能的原因是这个 agent 会话不是交互式桌面会话**，WebView2 无法创建窗口——不是代码问题。
+
+**待你验证**：双击运行
+
+```
+D:\dsh work\Object 824\o824-rs\.toolchain\tauri-spike\target\debug\o824-gui-spike.exe
+```
+
+看到标题为 `O824` 的窗口就说明壳没问题；如果也报同样的错，那就是 WebView2 环境的问题，需要单独查。
+
+### 本机启用 MSVC 的两条命令
+
+```bash
+source scripts/env.sh          # 自包含的 gnu 工具链（默认）
+source scripts/env-msvc.sh     # MSVC + Windows SDK（路径自动探测）
+export RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-msvc
+cargo build                    # 现在编出来的是 MSVC 目标
+```
+
+`scripts/env-msvc.sh` 的路径是从 vswhere 与 SDK 目录**探测**出来的，不写死；换机器只要装在同一类位置就能用。

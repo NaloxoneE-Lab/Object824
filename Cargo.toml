@@ -53,6 +53,7 @@ o824-discovery = { path = "crates/o824-discovery" }
 o824-fixtures = { path = "crates/o824-fixtures" }
 o824-verify = { path = "crates/o824-verify" }
 o824-plan = { path = "crates/o824-plan" }
+o824-present = { path = "crates/o824-present" }
 o824-snapshot = { path = "crates/o824-snapshot" }
 o824-apply = { path = "crates/o824-apply" }
 o824-protocol = { path = "crates/o824-protocol" }
