@@ -56,6 +56,7 @@ o824-plan = { path = "crates/o824-plan" }
 o824-snapshot = { path = "crates/o824-snapshot" }
 o824-apply = { path = "crates/o824-apply" }
 o824-protocol = { path = "crates/o824-protocol" }
+o824-bridge = { path = "crates/o824-bridge" }
 o824-kernel = { path = "crates/o824-kernel" }
 o824-formproc = { path = "crates/o824-formproc" }
 o824-mock = { path = "crates/o824-mock" }

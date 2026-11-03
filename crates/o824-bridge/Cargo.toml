@@ -1,0 +1,18 @@
+[package]
+name = "o824-bridge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "the GUI's side of the kernel protocol: one process, frames, jobs, and a close that is honest."
+
+[dependencies]
+o824-errs.workspace = true
+o824-model.workspace = true
+o824-protocol.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+o824-fixtures.workspace = true

@@ -207,6 +207,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "o824-bridge"
+version = "0.1.0"
+dependencies = [
+ "o824-errs",
+ "o824-fixtures",
+ "o824-model",
+ "o824-protocol",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "o824-cli"
 version = "0.1.0"
 dependencies = [
