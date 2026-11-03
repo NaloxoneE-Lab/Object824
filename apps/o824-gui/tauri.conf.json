@@ -5,16 +5,7 @@
   "build": { "frontendDist": "dist" },
   "app": {
     "withGlobalTauri": true,
-    "windows": [
-      {
-        "title": "O824",
-        "width": 880,
-        "height": 640,
-        "minWidth": 640,
-        "minHeight": 480,
-        "resizable": true
-      }
-    ]
+    "windows": []
   },
   "bundle": { "active": false, "targets": "all", "icon": ["icons/icon.ico"] }
 }

@@ -125,8 +125,9 @@ h1 {
 
 .row {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 16px;
+  gap: 6px 16px;
   text-align: left;
   font: inherit;
   color: inherit;
@@ -143,6 +144,8 @@ h1 {
 
 .detail {
   color: var(--muted);
+  text-align: right;
+  margin-left: auto;
 }
 
 .card {

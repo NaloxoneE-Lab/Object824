@@ -122,6 +122,12 @@ fn main() {
     ));
     std::panic::set_hook(Box::new(|info| {
         log_line(&format!("PANIC: {info}"));
+        // The call stack names the call that was denied; the message alone does not.
+        log_line(&format!(
+            "BACKTRACE:
+{}",
+            std::backtrace::Backtrace::force_capture()
+        ));
     }));
     // Before Tauri starts: the data directory it will use has to be ours, not one an
     // elevated run left behind.
@@ -132,8 +138,26 @@ fn main() {
         std::env::var_os("WEBVIEW2_USER_DATA_FOLDER")
     ));
 
+    let data_directory = usable_data_directory();
     let started = std::panic::catch_unwind(|| {
         tauri::Builder::default()
+        .setup(move |app| {
+            // §7.5: the window is created here rather than by the config because its
+            // browser data directory has to be a path this account can actually write.
+            // `webview2_user_data_folder` is not consulted by the runtime — the directory
+            // is passed to WebView2 explicitly, which is why it has to be set here.
+            let url = tauri::WebviewUrl::App("index.html".into());
+            let mut builder = tauri::WebviewWindowBuilder::new(app, "main", url)
+                .title("O824")
+                .inner_size(880.0, 640.0)
+                .min_inner_size(640.0, 480.0)
+                .center();
+            if let Some(directory) = data_directory.clone() {
+                builder = builder.data_directory(directory);
+            }
+            builder.build()?;
+            Ok(())
+        })
         .manage(Kernel(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![screen, diagnose])
         .run(tauri::generate_context!())
@@ -160,6 +184,39 @@ fn main() {
 /// elevated run it carries a high integrity level, and a normal run gets access denied
 /// before the first pixel. Choosing the path here and creating it as this user removes the
 /// whole class of failure; when even that fails, the app reports it instead of crashing.
+/// The first directory WebView2 may use, chosen by trying it.
+///
+/// The candidates are the program's own folder first — it lives somewhere the account
+/// owns — then `%LOCALAPPDATA%`, then `%TEMP%`. On a machine where the latter two refuse
+/// new folders (this one does), the first still works.
+fn usable_data_directory() -> Option<std::path::PathBuf> {
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(directory) = exe.parent() {
+            candidates.push(directory.join("O824-webview2"));
+        }
+    }
+    for variable in ["LOCALAPPDATA", "TEMP"] {
+        if let Some(base) = std::env::var_os(variable) {
+            candidates.push(std::path::PathBuf::from(base).join("O824-webview2"));
+        }
+    }
+    for directory in candidates {
+        match std::fs::create_dir_all(&directory) {
+            Ok(()) => {
+                log_line(&format!("webview data dir ready: {}", directory.display()));
+                return Some(directory);
+            }
+            Err(error) => log_line(&format!(
+                "webview data dir FAILED: {} ({error})",
+                directory.display()
+            )),
+        }
+    }
+    log_line("webview data dir: none usable, leaving the default");
+    None
+}
+
 fn prepare_webview_data() {
     // More than one candidate, in order: a folder this account owns, then the temp
     // directory, then WebView2's own default. An intermediate directory created by another
@@ -172,6 +229,25 @@ fn prepare_webview_data() {
         }
     }
     for directory in candidates {
+        // Everything Windows can tell us about the target before we try: "access denied"
+        // arrives for a file where a directory was expected, for a missing parent, and for a
+        // genuinely forbidden path, and the three have different fixes.
+        let parent = directory.parent().map(|path| path.to_path_buf());
+        log_line(&format!(
+            "data dir probe: target={} exists={:?} parent={:?} parent_exists={:?} parent_writable={:?}",
+            directory.display(),
+            std::fs::metadata(&directory).map(|meta| meta.is_dir()),
+            parent.as_ref().map(|path| path.display().to_string()),
+            parent.as_ref().map(|path| path.exists()),
+            parent.as_ref().map(|path| {
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path.join("o824-write-probe.tmp"))
+                    .map(|_| true)
+                    .unwrap_or(false)
+            })
+        ));
         match std::fs::create_dir_all(&directory) {
             Ok(()) => {
                 log_line(&format!("webview data dir ready: {}", directory.display()));
@@ -188,8 +264,12 @@ fn prepare_webview_data() {
 }
 
 /// The first screen: what is installed, and what the main button should say.
+///
+/// `async` on purpose: Tauri runs a synchronous command on the main thread, and this one
+/// spawns a process and waits for a diagnosis — a window that freezes while it thinks is
+/// indistinguishable from a window that has crashed.
 #[tauri::command]
-fn screen(kernel: tauri::State<Kernel>) -> Result<Screen, String> {
+async fn screen(kernel: tauri::State<'_, Kernel>) -> Result<Screen, String> {
     let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
     let mut guard = kernel.0.lock().map_err(|_| "the kernel handle is poisoned")?;
     let bridge = match guard.as_mut() {
@@ -254,7 +334,10 @@ fn screen(kernel: tauri::State<Kernel>) -> Result<Screen, String> {
 
 /// The findings for one installation, each as a sentence with a next step.
 #[tauri::command]
-fn diagnose(kernel: tauri::State<Kernel>, install_id: String) -> Result<Vec<FoundRow>, String> {
+async fn diagnose(
+    kernel: tauri::State<'_, Kernel>,
+    install_id: String,
+) -> Result<Vec<FoundRow>, String> {
     let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
     let mut guard = kernel.0.lock().map_err(|_| "the kernel handle is poisoned")?;
     let Some(bridge) = guard.as_mut() else {
