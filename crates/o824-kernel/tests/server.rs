@@ -396,3 +396,68 @@ fn a_body_that_is_not_json_is_answered_without_ending_the_session() {
 fn clean(path: &Path) -> String {
     o824_model::path::clean(path).display().to_string()
 }
+
+/// §21.5: start and stop are plan actions. The fixtures describe a desktop installation,
+/// so the action this test can ask for is `stop` — the plumbing under test is the same for
+/// both: the kernel writes a plan whose single step is the action, and the action names
+/// the installation it is about.
+#[test]
+fn a_stop_plan_is_a_plan_with_a_stop_step() {
+    let fixture = fixture("ok");
+    let mut server = Harness::start(options_for(&fixture));
+
+    server.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "o824.plan",
+        "params": { "installId": "i1", "action": "stop" },
+    }));
+
+    // A plan is a job: the answer arrives as events and ends in a terminal state.
+    let (reply, _) = server.next_reply(1);
+    let events = server.drain_until_terminal();
+    assert!(reply.get("result").is_some(), "{reply}");
+
+    let plan = events
+        .iter()
+        .find(|event| event.get("method").and_then(Value::as_str) == Some("op.result"))
+        .and_then(|event| {
+            event
+                .get("params")
+                .and_then(|params| params.get("result"))
+                .cloned()
+        })
+        .unwrap_or_else(|| panic!("no plan in {events:?}"));
+    let steps = plan["steps"].as_array().expect("steps");
+    assert_eq!(steps.len(), 1, "{plan}");
+    assert_eq!(steps[0]["kind"], "stop-desktop");
+    assert_eq!(
+        steps[0]["args"][0].as_str().expect("install id"),
+        "installId=i1",
+        "{plan}"
+    );
+    server.close();
+}
+
+/// A request with an action this build does not know must fail, not be ignored.
+#[test]
+fn a_plan_with_an_unknown_action_fails() {
+    let fixture = fixture("ok");
+    let mut server = Harness::start(options_for(&fixture));
+
+    server.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "o824.plan",
+        "params": { "installId": "i1", "action": "levitate" },
+    }));
+
+    let (reply, _) = server.next_reply(1);
+    assert!(reply.get("result").is_some(), "{reply}");
+    let events = server.drain_until_terminal();
+    let failed = events.iter().any(|event| {
+        event
+            .get("params")
+            .and_then(|params| params.get("state"))
+            .and_then(Value::as_str)
+            == Some("failed")
+    });
+    assert!(failed, "an unknown action is a failure: {events:?}");
+    server.close();
+}

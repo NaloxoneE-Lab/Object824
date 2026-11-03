@@ -90,13 +90,10 @@ pub fn start(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
 
     let install_id = flags.value("install").unwrap_or("web").to_owned();
     let state_path = context.data_root.join(o824_state::STATE_FILE_NAME);
-    let _lock = match o824_lock::acquire(&context.data_root) {
-        Ok(lock) => lock,
-        Err(error) => {
-            let _ = writeln!(stderr, "{error}");
-            return exit_code_of(Some(&error));
-        }
-    };
+    // The machine lock is apply's: it holds it across the whole start or stop, and a
+    // second copy here would deadlock against it. The checks above are pre-checks for a
+    // fast refusal; apply re-checks under the lock.
+    let _ = &o824_lock::acquire;
     let mut state = match o824_state::load(&state_path) {
         Ok(state) => state,
         Err(error) => {
@@ -128,7 +125,7 @@ pub fn start(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
     // generically: naming the owner is what lets a person tell "this is my old server"
     // from "this is something I care about".
     if let Some(port) = port {
-        if let Some(owner) = o824_webform::port_owner(port) {
+        if let Some(owner) = o824_formproc::port_owner(port) {
             let error = Error::new(
                 Code::PortInUse,
                 format!(
@@ -155,83 +152,125 @@ pub fn start(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
         let _ = writeln!(stderr, "{warning}");
     }
 
-    let Some(package) = web_package(&context.home) else {
+    // §21.5: starting is a plan action, not an RPC of its own. The plan is built here and
+    // run through apply, so the CLI and the protocol take one path; the guard above stays
+    // as a pre-check so a refusal arrives before any work.
+    // §21.5's rule for the desktop form: if one is running, report it; do not open a
+    // second window on a profile DSH takes exclusively.
+    if install_id == "desktop" || find_install(&install_id, "web").is_none() {
+        if let Some(host) = o824_discovery::host_processes().first() {
+            let already = Error::new(
+                Code::ConcurrentInstance,
+                "desktop: the app is already running",
+            );
+            let _ = already;
+            if flags.flag("json") {
+                let _ = writeln!(
+                    stdout,
+                    "{}",
+                    serde_json::json!({
+                        "installId": "desktop",
+                        "pid": host.pid,
+                        "port": serde_json::Value::Null,
+                        "url": serde_json::Value::Null,
+                        "alreadyRunning": true,
+                    })
+                );
+            } else {
+                let _ = writeln!(
+                    stdout,
+                    "desktop is already running (pid {}); nothing to start",
+                    host.pid
+                );
+            }
+            return EXIT_OK;
+        }
+    }
+
+    let Some(install) = find_install(&install_id, "web") else {
         let error = Error::new(
             Code::InstallDir,
-            "o824 start: no global @deepseek-ai/dsh found; the web form is an npm package",
+            "o824 start: no web installation found; run `o824 discover` to see what is installed",
         );
         let _ = writeln!(stderr, "{error}");
         return exit_code_of(Some(&error));
     };
-
-    let mut provisional_saved = false;
-    let started = match o824_webform::start(
-        &package,
-        &context.home,
-        &context.data_root,
+    // The plan names the installation the way the user did ("web"), because that is the
+    // key the record is kept under and the name every later command uses.
+    let mut install = install;
+    install.install_id = install_id.clone();
+    let options = o824_plan::StartOptions {
+        home: context.home.clone(),
         port,
-        o824_webform::START_TIMEOUT,
-        &mut |record: &ProcessRecord| {
-            // Written before the readiness wait, not after: if this process dies while
-            // waiting, the record is the only thing that can still stop the server.
-            let mut record = record.clone();
-            record.install_id = install_id.clone();
-            let mut interim = state.clone();
-            interim.remember_process(record);
-            o824_state::save(&state_path, &interim)?;
-            provisional_saved = true;
-            Ok(())
-        },
+        package_dir: Some(PathBuf::from(&install.root)),
+    };
+    let mut plan = match o824_plan::process::build_process(
+        &install,
+        o824_plan::ACTION_START,
+        o824_model::Timestamp::now(),
+        &context.data_root,
+        &options,
     ) {
-        Ok(started) => started,
+        Ok(plan) => plan,
         Err(error) => {
-            if provisional_saved {
-                // The child is gone (the start path kills it), so the provisional record
-                // must not outlive it.
-                let mut after = state.clone();
-                after.forget_process(&install_id);
-                let _ = o824_state::save(&state_path, &after);
-            }
             let _ = writeln!(stderr, "{error}");
             return exit_code_of(Some(&error));
         }
     };
-
-    let mut record = started.record.clone();
-    record.install_id = install_id.clone();
-    state.remember_process(record.clone());
-    if let Err(error) = o824_state::save(&state_path, &state) {
-        // The process is running and unrecorded, which is worse than not starting it:
-        // say so instead of leaving a server nobody can stop from this kernel.
-        let _ = o824_webform::stop(&record);
+    let scope = PathBuf::from(&install.root);
+    if let Err(error) = o824_apply::run(&context.data_root, &mut plan, &scope) {
+        // A failed start leaves no record behind: apply removes the provisional one.
         let _ = writeln!(stderr, "{error}");
         return exit_code_of(Some(&error));
     }
+
+    let started = match o824_state::load(&state_path) {
+        Ok(after) => after
+            .processes
+            .get(&install_id)
+            .cloned()
+            .or_else(|| blocking_record(&after, &context.home).cloned()),
+        Err(_) => None,
+    };
+    let Some(started) = started else {
+        let error = Error::new(
+            Code::Internal,
+            "o824 start: the plan ran but recorded no process",
+        );
+        let _ = writeln!(stderr, "{error}");
+        return exit_code_of(Some(&error));
+    };
+    let _ = &mut state;
+    let url = o824_formproc::url_from_log(std::path::Path::new(&started.log_path));
+    let port_text = started
+        .port
+        .map(|port| port.to_string())
+        .unwrap_or_else(|| "unknown".to_owned());
 
     if flags.flag("json") {
         let _ = writeln!(
             stdout,
             "{}",
             serde_json::json!({
-                "installId": install_id,
+                "installId": started.install_id,
                 "pid": started.pid,
                 "port": started.port,
-                "url": started.url,
-                "log": started.log_path.display().to_string(),
+                "url": url,
+                "log": started.log_path,
             })
         );
     } else {
         let _ = writeln!(
             stdout,
-            "started {install_id} pid={} port={} ({})",
+            "started {} pid={} port={}{}",
+            started.install_id,
             started.pid,
-            started
-                .port
-                .map(|port| port.to_string())
-                .unwrap_or_else(|| "unknown".to_owned()),
-            started.url
+            port_text,
+            url.as_ref()
+                .map(|url| format!(" ({url})"))
+                .unwrap_or_default()
         );
-        let _ = writeln!(stdout, "logs: {}", started.log_path.display());
+        let _ = writeln!(stdout, "logs: {}", started.log_path);
     }
     EXIT_OK
 }
@@ -271,13 +310,8 @@ pub fn stop(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> 
         .unwrap_or_else(|| o824_state::data_root(None));
     let install_id = flags.value("install").unwrap_or("web").to_owned();
     let state_path = data_root.join(o824_state::STATE_FILE_NAME);
-    let _lock = match o824_lock::acquire(&data_root) {
-        Ok(lock) => lock,
-        Err(error) => {
-            let _ = writeln!(stderr, "{error}");
-            return exit_code_of(Some(&error));
-        }
-    };
+    // The lock belongs to apply, which holds it across the whole stop.
+    let _ = &o824_lock::acquire;
     let mut state = match o824_state::load(&state_path) {
         Ok(state) => state,
         Err(error) => {
@@ -304,7 +338,7 @@ pub fn stop(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> 
     // record should go. A pid that now belongs to something else is the dangerous one:
     // the record is the only evidence we started something here, so it is kept and the
     // stop is refused.
-    if o824_webform::image_of(record.pid).is_none() {
+    if o824_formproc::image_of(record.pid).is_none() {
         state.forget_process(&install_id);
         if let Err(error) = o824_state::save(&state_path, &state) {
             let _ = writeln!(stderr, "{error}");
@@ -326,34 +360,55 @@ pub fn stop(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> 
         return EXIT_OK;
     }
 
-    if let Err(error) = o824_webform::stop(&record) {
+    // §21.5: stopping is a plan action. The plan names the installation, and apply
+    // re-checks the identity of the process it is about to stop — which is the only check
+    // that still matters by the time it runs.
+    let install = find_install(&record.install_id, "web").unwrap_or_else(|| {
+        // A record whose installation is gone can still be stopped: the plan needs the id
+        // and the shape, and the record carries both.
+        o824_model::Install {
+            install_id: record.install_id.clone(),
+            kind: if record.port.is_some() {
+                "web"
+            } else {
+                "desktop"
+            }
+            .to_owned(),
+            root: record.home.clone(),
+            home: record.home.clone(),
+            version: String::new(),
+            profiles: Vec::new(),
+            health: "ok".to_owned(),
+        }
+    });
+    let mut install = install;
+    install.install_id = record.install_id.clone();
+    let mut plan = match o824_plan::process::build_process(
+        &install,
+        o824_plan::ACTION_STOP,
+        o824_model::Timestamp::now(),
+        &data_root,
+        &o824_plan::StartOptions::default(),
+    ) {
+        Ok(plan) => plan,
+        Err(error) => {
+            let _ = writeln!(stderr, "{error}");
+            return exit_code_of(Some(&error));
+        }
+    };
+    let scope = PathBuf::from(&install.root);
+    if let Err(error) = o824_apply::run(&data_root, &mut plan, &scope) {
         let _ = writeln!(stderr, "{error}");
         return exit_code_of(Some(&error));
     }
+
     // The process is gone; the port may not be. A child of the server can hold it, and
     // saying so is more useful than letting the next start fail with "port in use".
     if let Some(port) = record.port {
-        if !o824_webform::wait_for_port_release(port, Duration::from_secs(5)) {
-            if let Some(owner) = o824_webform::port_owner(port) {
-                let _ = writeln!(
-                    stderr,
-                    "warning: port {port} is still listened on by pid {} ({}); \
-                     that is not the process this kernel started",
-                    owner.pid,
-                    if owner.image.is_empty() {
-                        "unknown"
-                    } else {
-                        &owner.image
-                    }
-                );
-            }
+        let _ = o824_formproc::wait_for_port_release(port, Duration::from_secs(5));
+        if let Some(warning) = leftover_warning(&record) {
+            let _ = writeln!(stderr, "{warning}");
         }
-    }
-
-    state.forget_process(&install_id);
-    if let Err(error) = o824_state::save(&state_path, &state) {
-        let _ = writeln!(stderr, "{error}");
-        return exit_code_of(Some(&error));
     }
 
     if flags.flag("json") {
@@ -393,7 +448,7 @@ fn stop_all(data_root: Option<PathBuf>, stdout: &mut dyn Write, stderr: &mut dyn
             state.forget_process(&install_id);
             continue;
         }
-        match o824_webform::stop(&record) {
+        match o824_formproc::stop(&record) {
             Ok(()) => {
                 stopped += 1;
                 let _ = writeln!(stdout, "stopped {install_id} (pid {})", record.pid);
@@ -463,7 +518,7 @@ pub fn status(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -
                     "startedBy": "kernel",
                     // The URL carries the trust token, so it is read from the log rather
                     // than stored — but a person asking what is running needs it.
-                    "url": o824_webform::url_from_log(std::path::Path::new(&record.log_path)),
+                    "url": o824_formproc::url_from_log(std::path::Path::new(&record.log_path)),
                     "log": record.log_path,
                 })
             })
@@ -501,7 +556,7 @@ pub fn status(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -
             record.install_id, state_word, record.pid, port, record.log_path
         );
         if is_alive(record) {
-            if let Some(url) = o824_webform::url_from_log(std::path::Path::new(&record.log_path)) {
+            if let Some(url) = o824_formproc::url_from_log(std::path::Path::new(&record.log_path)) {
                 let _ = writeln!(stdout, "         {url}");
             }
         }
@@ -621,7 +676,7 @@ pub fn logs(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> 
 
 /// True when the recorded process is still the process it recorded.
 pub fn is_alive(record: &ProcessRecord) -> bool {
-    o824_webform::is_the_recorded_process(&record.image, record.created, record.pid)
+    o824_formproc::is_the_recorded_process(&record.image, record.created, record.pid)
 }
 
 /// The data root and home a subcommand works against.
@@ -641,7 +696,7 @@ fn context_from(flags: &mut FlagSet) -> Option<Context> {
 /// owner is the difference between "port busy" and a fact a person can act on.
 pub fn leftover_warning(record: &ProcessRecord) -> Option<String> {
     let port = record.port?;
-    let owner = o824_webform::port_owner(port)?;
+    let owner = o824_formproc::port_owner(port)?;
     if owner.pid == record.pid {
         // The process itself is still there; this is not a leftover.
         return None;
@@ -687,15 +742,19 @@ pub fn desktop_already_running(home: &Path) -> Option<String> {
     ))
 }
 
-/// The global web package, when this machine has one.
-fn web_package(_home: &Path) -> Option<PathBuf> {
-    for prefix in o824_discovery::global_prefixes() {
-        if let Some(package) = o824_discovery::package_in_prefix(&prefix) {
-            return Some(package);
-        }
-    }
-    None
+/// The installation a start should bring up.
+///
+/// `--install` is either an identifier `o824 discover` printed or a kind name; a kind is
+/// what a person types when they do not care which of two copies runs.
+fn find_install(install_id: &str, kind: &str) -> Option<o824_model::Install> {
+    let installs = o824_discovery::discover(&o824_discovery::Options::default()).ok()?;
+    installs
+        .iter()
+        .find(|install| install.install_id == install_id)
+        .or_else(|| installs.iter().find(|install| install.kind == install_id))
+        .or_else(|| installs.iter().find(|install| install.kind == kind))
+        .cloned()
 }
 
 /// A start's timeout, re-exported so the CLI and the tests agree.
-pub const TIMEOUT: Duration = o824_webform::START_TIMEOUT;
+pub const TIMEOUT: Duration = o824_formproc::START_TIMEOUT;

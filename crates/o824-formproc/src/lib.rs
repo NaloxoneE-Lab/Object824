@@ -1,25 +1,29 @@
-//! Starting and stopping the web form of DSH.
+//! Starting and stopping the forms of DSH as processes this kernel owns.
 //!
-//! The web form is a global npm package booted as `dsh --profile web`. Starting it means
-//! a **detached** child process — the client that asked for it may exit immediately —
-//! writing to a log file this kernel owns, and a record of exactly which process it was.
+//! The web form is a global npm package booted as `dsh --profile web`; the desktop form is
+//! the installed app. Starting either means a **detached** child process — the client that
+//! asked for it may exit immediately — writing to a log file this kernel owns, and a record
+//! of exactly which process it was.
 //!
-//! Two rules shape everything here:
+//! Three rules shape everything here:
 //!
 //! * **Readiness is the process's own word.** `dsh --profile web` prints
-//!   `dsh web: http://host:port/?token=…` when it is listening. Waiting for that line is
-//!   honest; waiting for a port to open would also accept whatever else grabs it.
-//! * **A pid is not an identity.** The record carries the image and the process start
-//!   time as well, and `stop` refuses when they do not match: pids are reused, and
-//!   killing on pid alone is how a tool kills something it never started.
-//!
-//! The URL the form prints carries a trust token. It is returned to the caller and
-//! deliberately **not** stored in the record; `url_from_log` reads it back when a
-//! caller needs it, from the log this kernel already writes.
+//!   `dsh web: http://host:port/?token=…` when it is listening, and that line is the
+//!   signal. The desktop app prints nothing, so its readiness is "still alive a moment
+//!   later" — weaker, and said so rather than dressed up.
+//! * **A pid is not an identity.** The record carries the image and the process creation
+//!   time as well, and `stop` refuses when they do not match: pids are reused, and killing
+//!   on pid alone is how a tool kills something it never started.
+//! * **A trust token is not state.** The URL the web form prints carries one; it is
+//!   returned to the caller and deliberately not stored, and `url_from_log` reads it back
+//!   when a caller needs it.
 
-// The process queries are three Win32 calls with no standard-library equivalent; the
-// raw pointers stay inside them and the rest of the crate is ordinary Rust.
+// The process queries are three Win32 calls with no standard-library equivalent; the raw
+// pointers stay inside them and the rest of the crate is ordinary Rust.
 #![deny(unsafe_code)]
+
+pub mod desktop;
+pub mod lifecycle;
 
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -238,18 +242,7 @@ pub fn start(
         ));
     };
 
-    let logs = data_root.join("logs");
-    std::fs::create_dir_all(&logs)
-        .map_err(|error| file_error("create the log directory", &logs, &error))?;
-    // One log per start, forever, is a slow leak in a directory users do not clean.
-    prune_logs(&logs, KEEP_LOGS);
-    let stamp = o824_model::Timestamp::now()
-        .to_rfc3339_seconds()
-        .replace(':', "");
-    // The pid keeps two starts in one second from sharing a file that `File::create`
-    // would truncate: the second would erase the first's log, and a readiness line could
-    // be read from the other instance.
-    let log_path = logs.join(format!("web-{stamp}-{}.log", std::process::id()));
+    let log_path = log_file(data_root, "web")?;
     let log = std::fs::File::create(&log_path)
         .map_err(|error| file_error("create the log file", &log_path, &error))?;
     let log_for_stderr = log
@@ -566,7 +559,22 @@ pub fn stop(record: &ProcessRecord) -> Result<(), Error> {
     Ok(())
 }
 
-fn file_error(operation: &str, path: &Path, cause: &std::io::Error) -> Error {
+/// The log file one start writes to: `<data_root>\logs\<form>-<stamp>-<pid>.log`.
+///
+/// The pid in the name keeps two starts in one second from sharing a file that
+/// `File::create` would truncate.
+pub(crate) fn log_file(data_root: &Path, form: &str) -> Result<PathBuf, Error> {
+    let logs = data_root.join("logs");
+    std::fs::create_dir_all(&logs)
+        .map_err(|error| file_error("create the log directory", &logs, &error))?;
+    prune_logs(&logs, KEEP_LOGS);
+    let stamp = o824_model::Timestamp::now()
+        .to_rfc3339_seconds()
+        .replace(':', "");
+    Ok(logs.join(format!("{form}-{stamp}-{}.log", std::process::id())))
+}
+
+pub(crate) fn file_error(operation: &str, path: &Path, cause: &std::io::Error) -> Error {
     Error::new(
         Code::Internal,
         format!(
@@ -635,6 +643,59 @@ mod tests {
         drop(listener);
     }
 
+    /// The desktop form's readiness is "it is still running", proven with a stand-in
+    /// executable: a test must never launch the user's actual GUI.
+    #[test]
+    fn the_desktop_form_starts_a_stand_in_and_records_it() {
+        let temp = o824_fixtures::TempDir::new("o824-desktop-").expect("temp dir");
+        let install = temp.path().join("Programs").join("DeepSeek Harness");
+        std::fs::create_dir_all(&install).expect("mkdir");
+        let exe = install.join(o824_discovery::EXE_NAME);
+        // A process that stays alive long enough to be recorded, and is not the app.
+        std::fs::copy(r"C:\Windows\System32\cmd.exe", &exe).expect("copy a stand-in");
+        let home = temp.path().join("home");
+        std::fs::create_dir_all(&home).expect("mkdir");
+
+        // The stand-in is a scaled-down app: it stays alive because it was told to.
+        let args = [
+            "/c".to_owned(),
+            "ping".to_owned(),
+            "-n".to_owned(),
+            "30".to_owned(),
+            "127.0.0.1".to_owned(),
+        ];
+        let started = desktop::start(&exe, &args, &home, temp.path(), &mut |_record| Ok(()))
+            .expect("the stand-in starts");
+
+        let creation = started_at(started.pid);
+        assert_eq!(
+            creation,
+            Some(started.record.created),
+            "the record names the process"
+        );
+        assert!(is_the_recorded_process(
+            &started.record.image,
+            started.record.created,
+            started.pid
+        ));
+        assert!(started.record.home.ends_with("home"));
+        assert!(started.log_path.exists(), "the log file exists");
+
+        stop(&started.record).expect("stop it");
+        assert!(image_of(started.pid).is_none(), "the stand-in is gone");
+    }
+
+    #[test]
+    fn the_desktop_form_refuses_a_missing_executable() {
+        let temp = o824_fixtures::TempDir::new("o824-desktop-").expect("temp dir");
+        let missing = temp.path().join("nowhere").join(o824_discovery::EXE_NAME);
+        let error = desktop::start(&missing, &[], temp.path(), temp.path(), &mut |_record| {
+            Ok(())
+        })
+        .expect_err("no executable, no start");
+        assert!(error.fallback.contains("is not an executable"), "{error}");
+    }
+
     #[test]
     fn the_readiness_line_is_the_one_dsh_prints() {
         let text = "starting\ndsh web: http://127.0.0.1:21846/?token=abc\nmore\n";
@@ -680,7 +741,7 @@ mod tests {
 
     #[test]
     fn waiting_for_ready_gives_up_and_says_where_to_look() {
-        let temp = o824_fixtures::TempDir::new("o824-webform-").expect("temp dir");
+        let temp = o824_fixtures::TempDir::new("o824-formproc-").expect("temp dir");
         let log = temp.path().join("empty.log");
         std::fs::File::create(&log).expect("create");
         let error =
@@ -693,7 +754,7 @@ mod tests {
 
     #[test]
     fn the_wait_sees_a_line_that_appears_late() {
-        let temp = o824_fixtures::TempDir::new("o824-webform-").expect("temp dir");
+        let temp = o824_fixtures::TempDir::new("o824-formproc-").expect("temp dir");
         let log = temp.path().join("late.log");
         std::fs::File::create(&log).expect("create");
         let path = log.clone();
@@ -715,7 +776,7 @@ mod tests {
             eprintln!("skipping: no global @deepseek-ai/dsh on this machine");
             return;
         };
-        let temp = o824_fixtures::TempDir::new("o824-webform-start-").expect("temp dir");
+        let temp = o824_fixtures::TempDir::new("o824-formproc-start-").expect("temp dir");
         let home = temp.path().join("home");
         std::fs::create_dir_all(&home).expect("mkdir");
 

@@ -717,12 +717,31 @@ fn relative_slash_path(root: &Path, path: &Path) -> Option<String> {
 /// installation, so two plans built for the same installation at the same instant
 /// are the same plan, and a journal file name can never escape its directory.
 fn plan_id(install: &Install, root: &Path, now: Timestamp) -> String {
-    let seed = format!(
-        "{}\u{0}{}\u{0}{}",
-        install.install_id,
-        root.display(),
-        now.to_rfc3339()
-    );
+    plan_id_for(install, root, now, "repair")
+}
+
+/// The plan id with the action in the seed, so a start and a repair built in the same
+/// second for the same installation are different plans.
+pub(crate) fn plan_id_for(install: &Install, root: &Path, now: Timestamp, action: &str) -> String {
+    // A repair keeps the exact seed the reference implementation uses, so a plan id for
+    // the same installation and second is the same on both sides. An action plan mixes
+    // the action in, so a start and a repair in that second are different plans.
+    let seed = if action == "repair" {
+        format!(
+            "{}\u{0}{}\u{0}{}",
+            install.install_id,
+            root.display(),
+            now.to_rfc3339()
+        )
+    } else {
+        format!(
+            "{}\u{0}{}\u{0}{}\u{0}{}",
+            install.install_id,
+            root.display(),
+            now.to_rfc3339(),
+            action
+        )
+    };
     let mut hasher = Sha256::new();
     hasher.update(seed.as_bytes());
     let digest = hasher.finalize();
@@ -958,3 +977,10 @@ mod tests {
         assert!(!within_root(root, Path::new(r"C:\elsewhere")));
     }
 }
+
+pub mod process;
+
+pub use process::{
+    StartOptions, ACTION_START, ACTION_STOP, ARG_HOME, ARG_INSTALL_ID, ARG_PORT,
+    KIND_START_DESKTOP, KIND_START_WEB, KIND_STOP_DESKTOP, KIND_STOP_WEB,
+};

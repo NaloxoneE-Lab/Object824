@@ -30,6 +30,7 @@ pub mod allow_builds;
 pub mod journal;
 // The free-space precheck calls the Windows API, which has no standard-library
 // equivalent; the module keeps its raw pointers to itself.
+pub mod process;
 #[allow(unsafe_code)]
 pub mod reinstall;
 // Installing a reparse point is the one thing the standard library cannot do;
@@ -240,19 +241,25 @@ fn execute(data_root: &Path, install_id: &str, root: &Path, step: &mut Step) -> 
         )));
     }
     let path = PathBuf::from(&step.path);
-    if !path.is_absolute() {
+    if !is_process_step(&step.kind) && !path.is_absolute() {
         return Err(internal(format!(
             "apply: step {:?} path {:?} is not absolute",
             step.kind, step.path
         )));
     }
-    if !under_root(root, &path) {
+    if !is_process_step(&step.kind) && !under_root(root, &path) {
         return Err(drift(format!(
             "apply: step {:?} path {:?} is outside the installation root {:?}; re-run the plan",
             step.kind,
             step.path,
             root.display().to_string()
         )));
+    }
+
+    // A process step starts or stops a form; it rewrites no file and its path is an
+    // executable outside the installation root, so the root rules below do not apply.
+    if is_process_step(&step.kind) {
+        return crate::process::run(data_root, install_id, step);
     }
 
     match step.kind.as_str() {
@@ -265,6 +272,17 @@ fn execute(data_root: &Path, install_id: &str, root: &Path, step: &mut Step) -> 
         o824_plan::KIND_REINSTALL_PROFILE => reinstall::reinstall_profile(step),
         other => Err(internal(format!("apply: unknown step kind {other:?}"))),
     }
+}
+
+/// True when a step starts or stops a form rather than editing a file.
+pub fn is_process_step(kind: &str) -> bool {
+    matches!(
+        kind,
+        o824_plan::KIND_START_WEB
+            | o824_plan::KIND_STOP_WEB
+            | o824_plan::KIND_START_DESKTOP
+            | o824_plan::KIND_STOP_DESKTOP
+    )
 }
 
 /// True when a step replaces a reparse point.

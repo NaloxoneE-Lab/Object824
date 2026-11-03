@@ -9,6 +9,7 @@ description = "the pure repair planner."
 
 [dependencies]
 o824-errs.workspace = true
+o824-discovery.workspace = true
 o824-model.workspace = true
 o824-snapshot.workspace = true
 o824-verify.workspace = true

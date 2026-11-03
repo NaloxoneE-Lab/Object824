@@ -435,22 +435,57 @@ impl JobSession {
             return Outcome::Cancelled;
         }
 
-        let with_install = params
-            .get("withInstall")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        let envelope = o824_verify::doctor(&install, &options_data_root(options));
-        let plan = match o824_plan::build_with(
-            &install,
-            &envelope,
-            o824_model::Timestamp::now(),
-            &options_data_root(options),
-            o824_plan::Options {
-                install_packages: with_install,
-            },
-        ) {
-            Ok(plan) => plan,
-            Err(error) => return Outcome::Failed(error.code, error.fallback),
+        // §21.5: start and stop are actions of the same plan/apply flow, not methods of
+        // their own. A client that wants to start a form asks for a plan with
+        // `action: "start"`, confirms it, and applies it — the kernel writes the plan, so
+        // the confirmation is of something the kernel actually said.
+        let action = params
+            .get("action")
+            .and_then(Value::as_str)
+            .unwrap_or("repair");
+        let plan = if action == "repair" {
+            let with_install = params
+                .get("withInstall")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let envelope = o824_verify::doctor(&install, &options_data_root(options));
+            match o824_plan::build_with(
+                &install,
+                &envelope,
+                o824_model::Timestamp::now(),
+                &options_data_root(options),
+                o824_plan::Options {
+                    install_packages: with_install,
+                },
+            ) {
+                Ok(plan) => plan,
+                Err(error) => return Outcome::Failed(error.code, error.fallback),
+            }
+        } else {
+            let home = params
+                .get("home")
+                .and_then(Value::as_str)
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| o824_discovery::resolve_home(None));
+            let port = params
+                .get("port")
+                .and_then(Value::as_u64)
+                .and_then(|port| u16::try_from(port).ok());
+            let options_for_action = o824_plan::StartOptions {
+                home,
+                port,
+                package_dir: Some(std::path::PathBuf::from(&install.root)),
+            };
+            match o824_plan::process::build_process(
+                &install,
+                action,
+                o824_model::Timestamp::now(),
+                &options_data_root(options),
+                &options_for_action,
+            ) {
+                Ok(plan) => plan,
+                Err(error) => return Outcome::Failed(error.code, error.fallback),
+            }
         };
         if self.cancelled() {
             return Outcome::Cancelled;

@@ -61,7 +61,7 @@ fn record_for(install_id: &str, pid: u32, image: &str, home: &str) -> ProcessRec
         port: Some(12345),
         home: home.to_owned(),
         image: image.to_owned(),
-        created: o824_webform::started_at(pid).unwrap_or(0),
+        created: o824_formproc::started_at(pid).unwrap_or(0),
         started_at: "2026-11-03T00:00:00Z".to_owned(),
         log_path: String::new(),
     }
@@ -553,7 +553,7 @@ fn default_home() -> std::path::PathBuf {
 /// The image of the spawned stand-in, read after it is surely running.
 fn image_of_stand_in(child: &mut std::process::Child) -> String {
     for _ in 0..50 {
-        if let Some(image) = o824_webform::image_of(child.id()) {
+        if let Some(image) = o824_formproc::image_of(child.id()) {
             if !image.is_empty() {
                 return image;
             }

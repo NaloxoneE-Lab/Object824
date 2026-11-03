@@ -1,11 +1,11 @@
 [package]
-name = "o824-webform"
+name = "o824-formproc"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "starts and stops the web form of DSH, and tells the truth about what it started."
+description = "starts and stops the forms of DSH as processes the kernel owns, and tells the truth about what it started."
 
 [dependencies]
 o824-discovery.workspace = true
