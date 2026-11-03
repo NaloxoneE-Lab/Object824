@@ -20,6 +20,12 @@ const elements = {
   installations: document.getElementById("installations"),
   findings: document.getElementById("findings"),
   failure: document.getElementById("failure"),
+  panel: document.getElementById("confirm-panel"),
+  backup: document.getElementById("backup"),
+  steps: document.getElementById("steps"),
+  stepsHeading: document.getElementById("steps-heading"),
+  confirmStart: document.getElementById("confirm-start"),
+  confirmCancel: document.getElementById("confirm-cancel"),
   copy: document.getElementById("copy"),
   status: document.getElementById("status"),
 };
@@ -150,6 +156,7 @@ async function start() {
   elements.copy.hidden = rows.length === 0;
 
   if (rows.length === 1) {
+    lastDiagnosed = rows[0];
     // One installation: diagnosing it is the first screen's job, and the user sees the
     // result without having to ask. §20.1's third path.
     await diagnoseRow(rows[0]);
@@ -199,6 +206,7 @@ async function diagnoseRow(install) {
     };
     if (detail()) detail().textContent = detailFor(result);
     elements.status.textContent = "";
+    lastDiagnosed = install;
     setHeadline(
       await invoke("summarize", { layout: layoutMeasurements(), installs: [result] }),
     );
@@ -209,10 +217,95 @@ async function diagnoseRow(install) {
   }
 }
 
+/// The install the primary button is about, once something is chosen.
+let chosen = null;
+
+/// The installation the headline describes, so the primary button knows its subject.
+let lastDiagnosed = null;
+
+/// Asks for a plan and shows it. Nothing has changed at this point.
+async function askForPlan(install) {
+  chosen = install;
+  elements.status.textContent = "asking what a repair would do…";
+  try {
+    const plan = await invoke("repair_plan", { installId: install.id });
+    elements.backup.textContent = plan.backup;
+    elements.stepsHeading.textContent = plan.heading;
+    elements.steps.replaceChildren(
+      ...plan.steps.map((text) => {
+        const item = document.createElement("li");
+        item.textContent = text;
+        return item;
+      }),
+    );
+    elements.confirmStart.textContent = plan.confirm;
+    elements.confirmCancel.textContent = plan.cancel;
+    elements.panel.hidden = false;
+    elements.status.textContent = "";
+    // §20.7: the default focus is the way out, not the way in.
+    elements.confirmCancel.focus();
+  } catch (error) {
+    elements.status.textContent = "";
+    showFailure(String(error));
+  }
+}
+
+async function runRepair() {
+  if (!chosen) return;
+  elements.panel.hidden = true;
+  elements.primary.disabled = true;
+  elements.status.textContent = "repairing…";
+  try {
+    const result = await invoke("repair_apply", { installId: chosen.id });
+    elements.headline.textContent = result.headline;
+    elements.reason.textContent = result.reason;
+    elements.primary.hidden = !result.next_step;
+    if (result.next_step) elements.primary.textContent = result.next_step;
+    elements.status.textContent = result.applied
+      ? result.findings === 0
+        ? "done"
+        : `${result.findings} problem(s) left`
+      : "the repair did not finish";
+    // Both the row and the detail list are stale now.
+    await refreshRow(chosen);
+    await showFindings(chosen.id, { quiet: true });
+  } catch (error) {
+    showFailure(String(error));
+  } finally {
+    elements.primary.disabled = false;
+  }
+}
+
+/// Re-diagnoses one row after a change.
+async function refreshRow(install) {
+  try {
+    const findings = await invoke("diagnose", { installId: install.id });
+    const repairable = findings.filter((finding) => finding.repairable).length;
+    const detail = elements.installations.querySelector(
+      `[data-id="${install.id}"] [data-role="detail"]`,
+    );
+    if (detail) {
+      detail.textContent = detailFor({ findings: findings.length, repairable });
+    }
+  } catch (error) {
+    /* the headline already says what happened */
+  }
+}
+
 elements.primary?.addEventListener("click", () => {
-  // The first slice shows the sentence; the repair itself is the next slice.
-  elements.status.textContent = "this build shows the diagnosis only";
+  if (chosen) {
+    void askForPlan(chosen);
+    return;
+  }
+  void askForPlan(lastDiagnosed);
 });
+
+elements.confirmCancel?.addEventListener("click", () => {
+  elements.panel.hidden = true;
+  elements.status.textContent = "";
+});
+
+elements.confirmStart?.addEventListener("click", () => void runRepair());
 
 elements.copy?.addEventListener("click", async () => {
   try {
@@ -224,4 +317,17 @@ elements.copy?.addEventListener("click", async () => {
   }
 });
 
-start();
+const AUTO = new URLSearchParams(location.search).has("autorepair");
+
+start().then(async () => {
+  if (!AUTO) return;
+  const target = lastDiagnosed || (await invoke("list"))[0];
+  if (!target) return;
+  await askForPlan(target);
+  // `hold` stops at the confirmation panel and `slow` pauses there: both exist so the panel
+  // can be photographed. The real pace is a second and a half.
+  const mode = new URLSearchParams(location.search).get("autorepair");
+  if (mode === "hold") return;
+  await new Promise((resolve) => setTimeout(resolve, mode === "slow" ? 8000 : 1500));
+  await runRepair();
+});

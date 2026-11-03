@@ -194,3 +194,38 @@ h1 {
   padding: 16px 18px;
   color: var(--warn);
 }
+
+/* The confirmation panel: quiet, clearly a stop before something happens. */
+.confirm {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
+.backup {
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+
+.steps-heading {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.steps {
+  margin: 0 0 16px;
+  padding-left: 20px;
+  color: var(--ink);
+}
+
+.steps li {
+  margin: 2px 0;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}

@@ -53,6 +53,50 @@ struct InstallRow {
 /// The kernel this window talks to, kept for the life of the window.
 struct Kernel(Mutex<Option<Bridge>>);
 
+/// The plan waiting for a yes or a no.
+///
+/// A repair is two steps on purpose (§7.2): the kernel writes what it would do, the window
+/// shows it, and only then does anything change. The plan is kept verbatim because `apply`
+/// takes the plan the kernel wrote, not a description of one.
+#[derive(Default)]
+struct PendingPlan(Mutex<Option<serde_json::Value>>);
+
+/// What the window needs to ask for permission.
+#[derive(Serialize)]
+struct PlanView {
+    /// The plan's identifier, so a log can name it.
+    plan_id: String,
+    /// The steps, each already in ordinary words.
+    steps: Vec<String>,
+    /// The safety-net sentence.
+    backup: String,
+    /// The sentence above the list.
+    heading: String,
+    /// What the button says.
+    confirm: String,
+    /// What the way out says.
+    cancel: String,
+    /// When the plan stops being applicable.
+    expires_at: String,
+}
+
+/// What `apply` produced.
+#[derive(Serialize)]
+struct ApplyView {
+    /// True when the kernel applied the plan without complaint.
+    applied: bool,
+    /// What the diagnosis says now.
+    findings: usize,
+    /// How many of those can still be fixed automatically.
+    repairable: usize,
+    /// The sentence for the user.
+    headline: String,
+    /// The reason, when something is left.
+    reason: String,
+    /// What can be done next.
+    next_step: String,
+}
+
 /// The last concrete reason the window could not start, kept so the dialog can say it.
 ///
 /// "The window could not be created" without the reason is the kind of message that makes
@@ -147,7 +191,16 @@ fn main() {
             // browser data directory has to be a path this account can actually write.
             // `webview2_user_data_folder` is not consulted by the runtime — the directory
             // is passed to WebView2 explicitly, which is why it has to be set here.
-            let url = tauri::WebviewUrl::App("index.html".into());
+            let url = if let Ok(mode) = std::env::var("O824_GUI_AUTOREPAIR") {
+                let mode = match mode.as_str() {
+                    "slow" => "slow",
+                    "hold" => "hold",
+                    _ => "1",
+                };
+                tauri::WebviewUrl::App(format!("index.html?autorepair={mode}").into())
+            } else {
+                tauri::WebviewUrl::App("index.html".into())
+            };
             let mut builder = tauri::WebviewWindowBuilder::new(app, "main", url)
                 .title("O824")
                 .inner_size(880.0, 640.0)
@@ -160,8 +213,9 @@ fn main() {
             Ok(())
         })
         .manage(Kernel(Mutex::new(None)))
+        .manage(PendingPlan::default())
         .invoke_handler(tauri::generate_handler![
-            list, checking, diagnose, summarize
+            list, checking, diagnose, summarize, repair_plan, repair_apply
         ])
         .run(tauri::generate_context!())
     });
@@ -279,11 +333,7 @@ async fn list(kernel: tauri::State<'_, Kernel>) -> Result<Vec<InstallRow>, Strin
     let bridge = match guard.as_mut() {
         Some(bridge) => bridge,
         None => {
-            let started = Bridge::start(&Options {
-                program: resolve_kernel(),
-                ..Options::default()
-            })
-            .map_err(|error| error.to_string())?;
+            let started = Bridge::start(&kernel_options()).map_err(|error| error.to_string())?;
             guard.insert(started)
         }
     };
@@ -319,6 +369,110 @@ fn checking(locale_tag: Option<String>) -> Screen {
     }
 }
 
+/// Asks the kernel what a repair would do, and shows it before anything changes.
+#[tauri::command]
+async fn repair_plan(
+    pending: tauri::State<'_, PendingPlan>,
+    install_id: String,
+) -> Result<PlanView, String> {
+    let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
+    let mut bridge = Bridge::start(&kernel_options()).map_err(|error| error.to_string())?;
+    let plan = bridge
+        .plan(&install_id, "repair")
+        .map_err(|error| error.to_string())?;
+    let _ = bridge.close();
+
+    let steps: Vec<String> = plan["steps"]
+        .as_array()
+        .map(|steps| {
+            steps
+                .iter()
+                .map(|step| {
+                    let kind = step["kind"].as_str().unwrap_or("other");
+                    o824_present::step_name(kind, locale)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    if steps.is_empty() {
+        return Err("the kernel found nothing to repair".to_owned());
+    }
+    let plan_id = plan["id"].as_str().unwrap_or_default().to_owned();
+    let expires_at = plan["expiresAt"].as_str().unwrap_or_default().to_owned();
+    log_line(&format!("repair plan {plan_id}: {} steps", steps.len()));
+    if let Ok(mut slot) = pending.0.lock() {
+        *slot = Some(plan);
+    }
+    Ok(PlanView {
+        plan_id,
+        steps,
+        backup: o824_present::backup_notice(locale),
+        heading: o824_present::steps_heading(locale),
+        confirm: o824_present::confirm_copy(locale),
+        cancel: o824_present::cancel_copy(locale),
+        expires_at,
+    })
+}
+
+/// Runs the plan the user just approved, then says what the diagnosis says now.
+#[tauri::command]
+async fn repair_apply(
+    pending: tauri::State<'_, PendingPlan>,
+    install_id: String,
+) -> Result<ApplyView, String> {
+    let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
+    let plan = pending
+        .0
+        .lock()
+        .map_err(|_| "the plan handle is poisoned")?
+        .take()
+        .ok_or_else(|| "there is no plan to apply".to_owned())?;
+    let plan_id = plan["id"].as_str().unwrap_or_default().to_owned();
+
+    let mut bridge = Bridge::start(&kernel_options()).map_err(|error| error.to_string())?;
+    let applied = bridge.apply(&plan);
+    let after = bridge.doctor(&install_id);
+    let _ = bridge.close();
+
+    let applied_ok = applied.is_ok();
+    if let Err(error) = &applied {
+        log_line(&format!("apply {plan_id} failed: {error}"));
+    } else {
+        log_line(&format!("apply {plan_id} ok"));
+    }
+
+    let (findings, repairable) = match &after {
+        Ok(envelope) => {
+            let items = envelope["findings"].as_array().cloned().unwrap_or_default();
+            (
+                items.len(),
+                items.iter().filter(|f| f.get("repair").is_some()).count(),
+            )
+        }
+        Err(_) => (0, 0),
+    };
+
+    let copy = if applied_ok && findings == 0 {
+        o824_present::repair_done(locale)
+    } else if applied_ok {
+        o824_present::repair_remaining(locale)
+    } else {
+        applied
+            .err()
+            .map(|error| o824_present::failure_copy(&error.to_string(), locale))
+            .unwrap_or_else(|| o824_present::repair_done(locale))
+    };
+
+    Ok(ApplyView {
+        applied: applied_ok,
+        findings,
+        repairable,
+        headline: copy.headline,
+        reason: copy.reason,
+        next_step: copy.next_step,
+    })
+}
+
 /// The first screen once every row has been diagnosed.
 ///
 /// The decision belongs here: which sentence the window leads with is the same rule whether
@@ -351,11 +505,7 @@ async fn diagnose(
     let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
     // Its own kernel, so three diagnoses run at the same time instead of queueing behind
     // one another: they are independent questions and each costs seconds.
-    let mut own = Bridge::start(&Options {
-        program: resolve_kernel(),
-        ..Options::default()
-    })
-    .map_err(|error| error.to_string())?;
+    let mut own = Bridge::start(&kernel_options()).map_err(|error| error.to_string())?;
     let started = std::time::Instant::now();
     let envelope = own.doctor(&install_id).map_err(|error| error.to_string())?;
     log_line(&format!("diagnose {install_id}: {:?}", started.elapsed()));
@@ -401,6 +551,21 @@ struct FoundRow {
 /// `O824_KERNEL` wins, then a copy beside the window, then the workspace build the window
 /// was built from, then `PATH`. A window that cannot find its kernel says so and points at
 /// the command line rather than guessing.
+/// Where the kernel should look, when this window is being exercised against a fixture.
+///
+/// `O824_ROOT` exists so the whole window — not just the protocol underneath it — can be run
+/// against a broken tree. A test that repairs the developer's own DSH is a test nobody dares
+/// run twice.
+fn kernel_options() -> Options {
+    let root = std::env::var_os("O824_ROOT").map(std::path::PathBuf::from);
+    Options {
+        program: resolve_kernel(),
+        root: root.clone(),
+        home: root.clone(),
+        data_root: root.map(|path| path.join("data")),
+    }
+}
+
 fn resolve_kernel() -> Option<std::path::PathBuf> {
     use std::path::PathBuf;
 

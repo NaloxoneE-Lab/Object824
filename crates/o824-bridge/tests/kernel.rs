@@ -146,3 +146,36 @@ fn a_missing_kernel_is_reported_as_such() {
         "{error}"
     );
 }
+
+/// §7.2's whole shape, over the protocol: a plan is written, shown, and only then applied —
+/// and after applying, the diagnosis is clean.
+///
+/// Run against a fixture, never a real installation: a test that repairs the developer's
+/// own DSH is a test nobody dares run twice.
+#[test]
+fn a_repair_plan_can_be_applied_and_leaves_nothing_behind() {
+    // `dangling-bridge` is the fixture whose finding the kernel knows how to repair;
+    // the broken-link one is deliberately manual (a link whose target is gone has no
+    // correct target to rebuild).
+    let fixture = o824_fixtures::build("dangling-bridge").expect("fixture");
+    let mut bridge = Bridge::start(&options_for_fixture(&fixture)).expect("start");
+
+    let before = bridge.doctor("i1").expect("doctor");
+    let findings_before = before["findings"].as_array().map(Vec::len).unwrap_or(0);
+    assert!(findings_before > 0, "the fixture is broken: {before}");
+
+    let plan = bridge.plan("i1", "repair").expect("plan");
+    let steps = plan["steps"].as_array().expect("steps");
+    assert!(!steps.is_empty(), "a broken tree has steps to run: {plan}");
+    assert!(
+        plan["fingerprint"].is_object(),
+        "a repair plan fingerprints what it will touch: {plan}"
+    );
+
+    bridge.apply(&plan).expect("apply");
+
+    let after = bridge.doctor("i1").expect("doctor");
+    let findings_after = after["findings"].as_array().map(Vec::len).unwrap_or(0);
+    assert_eq!(findings_after, 0, "the repair left nothing behind: {after}");
+    assert!(bridge.close());
+}

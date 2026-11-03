@@ -392,6 +392,7 @@ name = "o824-present"
 version = "0.1.0"
 dependencies = [
  "o824-model",
+ "serde",
  "serde_json",
 ]
 

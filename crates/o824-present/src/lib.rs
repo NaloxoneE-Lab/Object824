@@ -92,6 +92,71 @@ pub struct Installation {
     pub repairable: usize,
 }
 
+/// A plan step in ordinary words.
+///
+/// A step kind is an internal name (`dedupe-loader`); the screen shows this instead.
+pub fn step_name(kind: &str, locale: Locale) -> String {
+    let key = format!("step.{kind}");
+    let known = catalog().iter().any(|(candidate, _, _)| *candidate == key);
+    text(locale, if known { &key } else { "step.other" })
+}
+
+/// The button that starts the repair.
+pub fn confirm_copy(locale: Locale) -> String {
+    text(locale, "repair.confirm")
+}
+
+/// The button that leaves everything alone.
+pub fn cancel_copy(locale: Locale) -> String {
+    text(locale, "repair.cancel")
+}
+
+/// What the window says while the repair runs.
+pub fn running_copy(locale: Locale) -> Copy {
+    Copy {
+        headline: text(locale, "repair.running"),
+        reason: String::new(),
+        next_step: String::new(),
+    }
+}
+
+/// After a repair that left nothing behind.
+pub fn repair_done(locale: Locale) -> Copy {
+    Copy {
+        headline: text(locale, "repair.done"),
+        reason: String::new(),
+        next_step: String::new(),
+    }
+}
+
+/// After a repair that fixed some of it.
+pub fn repair_remaining(locale: Locale) -> Copy {
+    Copy {
+        headline: text(locale, "repair.remaining"),
+        reason: String::new(),
+        next_step: text(locale, "next.help"),
+    }
+}
+
+/// A failure the kernel reported, as a sentence with a next step.
+pub fn failure_copy(detail: &str, locale: Locale) -> Copy {
+    Copy {
+        headline: text(locale, "repair.failed"),
+        reason: detail.to_owned(),
+        next_step: text(locale, "next.help"),
+    }
+}
+
+/// The line above a list of steps.
+pub fn steps_heading(locale: Locale) -> String {
+    text(locale, "repair.steps")
+}
+
+/// The safety-net sentence shown before anything is changed.
+pub fn backup_notice(locale: Locale) -> String {
+    text(locale, "repair.backup")
+}
+
 /// Decides the first screen from what is on the machine.
 pub fn first_use(installs: &[Installation], locale: Locale) -> FirstUse {
     if installs.is_empty() {
@@ -171,8 +236,12 @@ pub fn form_name(kind: &str, locale: Locale) -> String {
 /// The check id is not shown to a user. It is the key into this catalog, which is the only
 /// place a check becomes a sentence.
 pub fn describe(check_id: &str, repairable: bool, locale: Locale) -> Copy {
+    // The catalog names each check's parts (`check.F04.headline`), so the code has to ask
+    // for the part it wants. Asking for `check.F04` found nothing and silently fell back to
+    // the generic sentence — the reason was right and the headline was wrong, which is a
+    // confusing thing to see on screen and a silent thing to have in code.
     let key = format!("check.{check_id}");
-    let headline = text_or(locale, &key, "check.unknown.headline");
+    let headline = text_or(locale, &format!("{key}.headline"), "check.unknown.headline");
     let reason = text_or(locale, &format!("{key}.reason"), "check.unknown.reason");
     let next_step = if repairable {
         text(locale, "next.repair")
@@ -221,6 +290,28 @@ fn catalog() -> &'static [(&'static str, &'static str, &'static str)] {
         ("next.close", "Close the program that is using it and try again", "关掉正在使用它的程序后重试"),
         ("next.update", "Update DeepSeek Harness", "更新 DeepSeek Harness"),
         ("next.choose", "Choose the right one", "选对那一个"),
+        // The repair flow (§20.3): the safety net has to be visible before anything moves.
+        ("repair.backup", "A backup is made first (about 2 MB, restorable in one click).", "修复前会先备份（约 2 MB，可一键还原）。"),
+        ("repair.steps", "What will change:", "将要做的事："),
+        ("repair.confirm", "Fix it now", "开始修复"),
+        ("repair.cancel", "Not now", "先不修"),
+        ("repair.running", "Repairing…", "正在修复…"),
+        ("repair.done", "Fixed what could be fixed.", "能修的都修好了。"),
+        ("repair.remaining", "Something is still wrong:", "还有问题没解决："),
+        ("repair.restore", "Restore the backup", "还原备份"),
+        ("repair.restored", "The backup was restored.", "已还原到备份。"),
+        ("repair.failed", "The repair did not finish", "修复没能完成"),
+        ("repair.restore_failed", "The backup could not be restored.", "还原失败。"),
+        // Plan steps, in ordinary words. A step kind never reaches the screen.
+        ("step.dedupe-loader", "Remove a duplicated plugin entry", "去掉一个重复的插件条目"),
+        ("step.rebuild-link", "Repair a program file that points at nothing", "修复一个指向空处的程序文件"),
+        ("step.rebuild-bridge", "Repair a plugin link", "修复一个插件链接"),
+        ("step.allow-builds", "Allow the plugin builder to run", "允许插件完成安装步骤"),
+        ("step.restore-snapshot", "Put a settings file back the way it was", "把一个设置文件恢复原样"),
+        ("step.replace-file", "Replace a damaged file", "替换一个损坏的文件"),
+        ("step.reinstall-profile", "Reinstall the saved settings", "重装保存的设置"),
+        ("step.other", "Do a repair step", "执行一个修复步骤"),
+        ("step.summary", "{count} step(s)", "{count} 个步骤"),
         // Checks (F01–F28). The reason is the cause; `.next` overrides the generic step.
         ("check.F01.headline", "A file the program needs is missing", "程序需要的文件不见了"),
         ("check.F01.reason", "Something the program installs was removed or moved.", "安装时放进来的东西被删掉或移动了。"),
@@ -236,6 +327,9 @@ fn catalog() -> &'static [(&'static str, &'static str, &'static str)] {
         ("check.F11.next", "Update the older one", "把旧的那份更新"),
         ("check.F16.headline", "A settings file cannot be read", "有个设置文件读不出来"),
         ("check.F16.reason", "It was edited by hand, or written by a version that was interrupted.", "它被手动改过，或者写入时被打断了。"),
+        ("check.F17.headline", "A plugin could not finish installing", "有个插件没能装完"),
+        ("check.F17.reason", "Its installer was not allowed to run.", "它的安装步骤没有被允许执行。"),
+        ("check.F17.next", "Allow it and install again", "允许后重新安装"),
         ("check.F20.headline", "An update was interrupted", "上次更新没做完"),
         ("check.F20.reason", "The program was closed or the computer restarted mid-way.", "中途关掉了程序或重启了电脑。"),
         ("check.F20.next", "Roll the update back", "回滚这次更新"),
@@ -357,7 +451,7 @@ mod tests {
         for (key, _, _) in catalog() {
             let en = text(Locale::En, key);
             let zh = text(Locale::ZhHans, key);
-            if ACTIONLESS.contains(&key) {
+            if ACTIONLESS.contains(key) {
                 continue;
             }
             assert!(!en.trim().is_empty(), "{key}: empty English");
@@ -366,6 +460,21 @@ mod tests {
         for (key, count) in keys() {
             assert_eq!(count, 1, "{key} appears {count} times");
         }
+    }
+
+    /// A check the catalog knows must use its own sentence, not the generic fallback.
+    #[test]
+    fn a_known_check_uses_its_own_headline() {
+        let known = describe("F04", true, Locale::En);
+        assert_ne!(
+            known.headline,
+            text(Locale::En, "check.unknown.headline"),
+            "F04 fell back to the generic sentence"
+        );
+        assert!(known.headline.contains("half installed"), "{known:?}");
+
+        let unknown = describe("F99", true, Locale::En);
+        assert_eq!(unknown.headline, text(Locale::En, "check.unknown.headline"));
     }
 
     /// §20.1: the three first-use paths, each with its own main action.

@@ -184,9 +184,18 @@ impl Bridge {
         )
     }
 
-    /// Applies a plan the kernel wrote in this session.
+    /// Applies a plan the kernel wrote earlier in this session.
+    ///
+    /// The kernel takes a plan **id**, not a plan: it kept the plan itself when it wrote it,
+    /// so what travels is a reference to something the kernel can verify. Sending the body
+    /// would let a client edit the steps between the confirmation and the run, which is
+    /// exactly the gap the plan/apply split exists to close.
     pub fn apply(&mut self, plan: &Value) -> Result<Value, BridgeError> {
-        self.job("o824.apply", json!({ "plan": plan }))
+        let plan_id = plan
+            .get("id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| BridgeError::Protocol("the plan has no id".to_owned()))?;
+        self.job("o824.apply", json!({ "planId": plan_id }))
     }
 
     /// Asks the kernel to cancel a running job.

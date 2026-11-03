@@ -22,6 +22,18 @@
 
       <section id="installations" class="list" hidden></section>
       <section id="findings" class="list" hidden></section>
+
+      <!-- §20.3: the safety net is shown before anything moves, and the way out is a
+           button, not a sentence. -->
+      <section id="confirm-panel" class="confirm" hidden>
+        <p id="backup" class="backup"></p>
+        <p id="steps-heading" class="steps-heading"></p>
+        <ul id="steps" class="steps"></ul>
+        <div class="actions">
+          <button id="confirm-cancel" class="quiet"></button>
+          <button id="confirm-start" class="primary"></button>
+        </div>
+      </section>
       <section id="failure" class="failure" hidden></section>
     </main>
 
