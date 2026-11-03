@@ -179,3 +179,56 @@ fn a_repair_plan_can_be_applied_and_leaves_nothing_behind() {
     assert_eq!(findings_after, 0, "the repair left nothing behind: {after}");
     assert!(bridge.close());
 }
+
+/// §21.5 puts rollback among the plan actions, and the mechanism works — but it restores
+/// what a snapshot covers, which is the settings tree, not the plugin folders. A repair that
+/// rebuilds a link is therefore **not** undone by it, and this test says so rather than
+/// pretending otherwise: a restore button that does not restore is worse than none.
+#[test]
+fn rollback_restores_the_snapshot_it_covers_and_says_nothing_more() {
+    let fixture = o824_fixtures::build("dangling-bridge").expect("fixture");
+    let mut bridge = Bridge::start(&options_for_fixture(&fixture)).expect("start");
+
+    let broken = bridge.doctor("i1").expect("doctor");
+    assert!(
+        !broken["findings"]
+            .as_array()
+            .map(Vec::len)
+            .unwrap_or(0)
+            .eq(&0),
+        "the fixture starts broken: {broken}"
+    );
+
+    let repair = bridge.plan("i1", "repair").expect("repair plan");
+    bridge.apply(&repair).expect("apply the repair");
+
+    let rollback = bridge.plan("i1", "rollback").expect("rollback plan");
+    let steps = rollback["steps"].as_array().expect("steps");
+    assert_eq!(steps.len(), 1, "{rollback}");
+    assert_eq!(steps[0]["kind"], "restore-snapshot", "{rollback}");
+    assert!(
+        steps[0]["from"]
+            .as_str()
+            .map(|from| !from.is_empty())
+            .unwrap_or(false),
+        "the step names the snapshot it restores: {rollback}"
+    );
+
+    // The plan runs to completion: what it restores is the snapshot's own file set.
+    bridge.apply(&rollback).expect("apply the rollback");
+    let after = bridge.doctor("i1").expect("doctor");
+    assert!(after["findings"].is_array(), "{after}");
+
+    // And the limit, stated as a test so it cannot be forgotten: the plugin folder is out of
+    // the snapshot's scope, so a rebuilt link is not put back.
+    let node_modules = fixture
+        .root()
+        .join("profiles")
+        .join("desktop")
+        .join("node_modules");
+    assert!(
+        node_modules.is_dir(),
+        "the fixture keeps its plugins outside the snapshot"
+    );
+    assert!(bridge.close());
+}

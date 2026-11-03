@@ -14,12 +14,14 @@ use std::path::{Path, PathBuf};
 use o824_errs::{Code, Error};
 use o824_model::{Install, Timestamp};
 
-use crate::{Plan, Step, PLAN_TTL_SECONDS};
+use crate::{Plan, Step, KIND_RESTORE_SNAPSHOT, PLAN_TTL_SECONDS};
 
 /// Start the form an installation provides.
 pub const ACTION_START: &str = "start";
 /// Stop the form an installation provides.
 pub const ACTION_STOP: &str = "stop";
+/// Put the installation's files back the way the last snapshot has them.
+pub const ACTION_ROLLBACK: &str = "rollback";
 
 /// Start the web form (`dsh --profile web`).
 pub const KIND_START_WEB: &str = "start-web";
@@ -72,6 +74,36 @@ pub fn build_process(
         steps: Vec::new(),
         fingerprint: Default::default(),
     };
+    if action == ACTION_ROLLBACK {
+        // §21.5 lists rollback among the plan actions, and the machinery exists: a snapshot
+        // is taken before every apply, and restoring one is a step `apply` already runs. The
+        // only thing missing was a way to ask for it.
+        let snapshots = o824_snapshot::list(data_root, &install.install_id)
+            .map_err(|error| Error::new(error.code, error.fallback.clone()))?;
+        let Some(newest) = snapshots.first() else {
+            return Err(Error::new(
+                Code::StateDrift,
+                format!(
+                    "rollback: installation {:?} has no snapshot to go back to",
+                    install.install_id
+                ),
+            )
+            .with_param("installId", install.install_id.clone()));
+        };
+        // A snapshot covers the DSH home, not the application directory: restoring into the
+        // application root would write `profiles\` where it does not belong.
+        let scope = if install.home.is_empty() {
+            install.root.clone()
+        } else {
+            install.home.clone()
+        };
+        plan.root = scope.clone();
+        let mut step = Step::new(KIND_RESTORE_SNAPSHOT, scope);
+        step.from = newest.dir.clone();
+        step.to = newest.id.clone();
+        plan.steps.push(step);
+        return Ok(plan);
+    }
     let _ = data_root;
 
     match (action, install.kind.as_str()) {
