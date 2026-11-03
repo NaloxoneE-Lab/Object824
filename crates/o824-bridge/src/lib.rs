@@ -335,8 +335,15 @@ impl Bridge {
         match read_frame(&mut self.stdout) {
             Ok(body) => serde_json::from_slice(&body)
                 .map_err(|error| BridgeError::Protocol(format!("body: {error}"))),
-            // EOF means the kernel exited; anything else is a broken pipe.
-            Err(error) => Err(BridgeError::KernelGone(format!("{error}"))),
+            // EOF means the kernel exited; anything else is a broken pipe. The exit status
+            // goes in the message: "the kernel stopped answering" without it sends the
+            // reader to the wrong place.
+            Err(error) => match self.child.try_wait() {
+                Ok(Some(status)) => Err(BridgeError::KernelGone(format!(
+                    "{error}; the kernel exited with {status}"
+                ))),
+                _ => Err(BridgeError::KernelGone(format!("{error}"))),
+            },
         }
     }
 }

@@ -16,10 +16,14 @@ use std::process::ExitCode;
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
 
-    let stdout = std::io::stdout();
-    let stderr = std::io::stderr();
-    let mut stdout = stdout.lock();
-    let mut stderr = stderr.lock();
+    // The handles, not their locks. `Stdout::lock` is a global mutex, and holding it here
+    // for the whole process deadlocks every other thread that writes: `o824 kernel` hands
+    // a fresh `std::io::stdout()` to its job threads, and they block forever waiting for a
+    // lock the main thread never releases. That is docs/P3-KERNEL-BUG.md — a job's events
+    // never reached a real client, and the in-crate kernel tests could not see it because
+    // they never go through `main`.
+    let mut stdout = std::io::stdout();
+    let mut stderr = std::io::stderr();
     let code = o824_cli::run(&args, &mut stdout, &mut stderr);
     let _ = stdout.flush();
     let _ = stderr.flush();

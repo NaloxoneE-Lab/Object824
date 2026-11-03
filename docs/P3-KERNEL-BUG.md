@@ -1,70 +1,72 @@
-# 内核 bug：作业事件到不了真实客户端（P3 的阻塞项）
+# 内核 bug：作业事件到不了真实客户端（已修，2026-11-03）
 
-**状态**：已定位到可复现的最小现场，未修复。发现于 2026-11-03，做 P3 的 GUI 桥接层时。
+**状态**：已修复。根因是 `main` 把全局 stdout 锁持有到进程结束。
 
 ## 症状
 
-`o824 kernel --stdio` 收到 `o824.doctor` 后，**主线程**把 `{jobId}` 回复写进 stdout，然后作业线程
+`o824 kernel --stdio` 收到 `o824.doctor` 后，主线程把 `{jobId}` 回复写进 stdout，然后作业线程
 一个事件都发不出来。客户端只看得到 jobId，永远等不到 `op.state` / `op.result`。
 
-## 最小复现
+## 根因
 
-```bash
-# 一帧请求，stdin 给文件
-python - <<'PY'
-import json
-body = json.dumps({"jsonrpc":"2.0","id":1,"method":"o824.doctor","params":{"installId":"i1"}}).encode()
-open(".toolchain/doctor_abs.bin","wb").write(b"Content-Length: %d\r\n\r\n" % len(body) + body)
-PY
+`crates/o824/src/main.rs`：
 
-./target/debug/o824.exe kernel --stdio \
-  --root "$(pwd)/.toolchain/f03-tree3" --home "$(pwd)/.toolchain/f03-tree3" \
-  --data-root "$(pwd)/.toolchain/f03-tree3/data" < .toolchain/doctor_abs.bin
+```rust
+let stdout = std::io::stdout();
+let mut stdout = stdout.lock();          // ← 全局 stdout 锁，持有到 main 返回
+let code = o824_cli::run(&args, &mut stdout, &mut stderr);
 ```
 
-输出只有一帧：
+`kernel` 子命令**不使用**这个 writer，而是自己建一个 `Box::new(std::io::stdout())` 交给 `serve`。
+`std::io::Stdout` 的锁是**进程级全局互斥量**：主线程已经握着它，任何其他线程再调
+`stdout().write_all(...)` 就会永远等下去。
 
+于是：主线程写回复正常（重入锁），作业线程写事件全部阻塞。
+
+## 为什么进程内测试看不见
+
+`crates/o824-kernel` 的 11 个用例直接调 `serve`，写端是 `SharedWriter`（一个 `Vec<u8>`），
+**从不经过 `main`**，所以那把锁根本没被持有。P1 里唯一的真二进制测试只验证了"EOF 后退出"，
+没有发起任何作业。
+
+## 修法
+
+```rust
+let mut stdout = std::io::stdout();   // 句柄，不是锁
+let mut stderr = std::io::stderr();
 ```
-Content-Length: 56
 
-{"jsonrpc":"2.0","id":1,"seq":1,"result":{"jobId":"j1"}}
+每次写入自己取锁、写完释放，主线程不再长期占锁。
+
+## 回归测试
+
+`crates/o824/tests/kernel_stdio.rs`：
+
+```rust
+#[test]
+fn a_job_over_real_pipes_reports_its_result_and_terminates()
 ```
 
-用管道（stdin 保持打开）也一样：内核活着，但不再产出任何帧。
+它用**真二进制 + 真管道**发一次 `o824.doctor`，断言收到 `op.result`（带 doctor 信封）与终态
+`done`。把 `main` 的修复撤掉再跑，这条用例在 87 秒后判 FAILED——**它能抓住这个 bug**。
 
-## 已经排除的
+`crates/o824-bridge`（GUI 的客户端）的 8 个用例也全部转正，其中 doctor / plan / 未知 id 三条
+走的就是这条路径。
 
-| 猜测 | 排除方式 |
+## 排查过程中被排除的（留档，免得下次重走）
+
+| 猜测 | 怎么排除的 |
 |---|---|
-| `eprintln!`/stderr 从子线程丢失 | 换成写文件后确认：**工作线程确实跑起来了**（写出了一个文件） |
-| 作业本身慢或卡在 discovery | 在 `doctor()` 里插桩，卡点在工作线程**第一次写 stdout** 处，`resolve_install` 之前 |
-| 我们的 output 互斥锁被占 | 插桩显示 `write: locked` 之后卡在 `write_all`；换成**绕开互斥锁**、直接从工作线程写 `std::io::stdout()`，**依然到不了** |
-| 双线程写 stdout 本身不可行 | 独立最小程序（`Arc<Mutex<Box<dyn Write>>>` 装 `stdout`，主线程写一次后 join 工作线程）**正常**；主线程持有 `StdinLock` 时也正常 |
-| 沙箱禁止子线程 | 同一二进制里工作线程能写文件；独立的线程探测程序正常 |
+| 工作线程没启动 | 让它在第一步写文件：文件出现了 |
+| 卡在 discovery | 插桩显示卡在**第一次写 stdout**，`resolve_install` 之前 |
+| 内核自己的输出互斥锁 | 绕开它直接写 `std::io::stdout()`，依然阻塞 |
+| 双线程写 stdout 不可行 | 独立小程序（含 cargo 构建、python 管道父进程）正常 |
+| 沙箱禁子线程 | 同进程内工作线程写文件正常 |
+| 是 stderr 缓冲吞了日志 | 换成写文件后日志可见 |
 
-## 剩下的可能
+**最后一条线索是"主线程已经写过一次、然后阻塞在读 stdin"这个组合**——正是它让全局锁被占住。
 
-工作线程写 stdout 时，**主线程正阻塞在 stdin 的 `read_line` 上**——这是内核与我的最小复现唯一的
-结构差异（复现里主线程在 `join`，不在读管道）。Rust 的 `Stdout`/`Stdin` 是两个独立的全局锁，
-理论上不该互相阻塞；但在 Windows 上两者最终都指向同一批控制台/管道句柄，某种情况下写端会被
-读端挡住。
+## 教训
 
-**下一步的验证方向**（给下一个接手的人）：
-
-1. 在主线程读 stdin 的同时，让工作线程写 stdout 的最小复现（我还没跑这一个组合）。
-2. 把 `write_message` 的输出从 `Box<Stdout>` 换成**原始句柄**（`File::from_raw_handle(GetStdHandle)`），绕过 Rust 的全局 stdout 锁，看是否仍然阻塞。
-3. 若确认为 Rust stdio 锁问题，改法很可能是：内核**只用一个线程写 stdout**（专用写线程 + 通道），
-   这也回到我最初删掉的那个设计。
-
-## 影响范围
-
-- **P3 的 GUI 桥接层**（`o824-bridge` 的三个作业用例标了 `#[ignore = "KERNEL-JOBS-OVER-PIPES…"]`）。
-- **第三方 UI**：任何通过 `o824 kernel --stdio` 发起 doctor/plan/apply 的真实客户端都会挂。
-- **不受影响**：CLI 的直接命令（`o824 doctor` 等不开内核服务）、`o824.info`/`o824.discover`
-  （同步路径，主线程直接写）、11 个内核进程内测试（用 `SharedWriter`，不是进程管道）。
-
-## 为什么以前没发现
-
-P1 的内核验收是"进程内测试 + 一个只验证 EOF 退出的真二进制测试"。进程内测试的写端是
-`Vec<u8>`，不是管道；那个真二进制测试没有发起任何作业。**判据选在了看得见的地方，而不是
-用户会走的地方。** 这一条应当补进验收清单：内核的每个方法都要有一次**真管道**往返。
+判据要选在**用户会走的地方**。内核的每个方法都应该有一次真管道往返；进程内测试写得再密，
+也测不到"锁被别人一直握着"这类只有真实进程结构才有的问题。

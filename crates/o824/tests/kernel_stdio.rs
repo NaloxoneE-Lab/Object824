@@ -130,3 +130,59 @@ fn a_kernel_without_stdio_says_what_it_needs() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("--stdio"), "{stderr}");
 }
+
+/// A job's events must reach a client that is a **separate process**.
+///
+/// This is the regression test for docs/P3-KERNEL-BUG.md: `main` used to hold
+/// `stdout().lock()` for the whole process, so the kernel's job threads deadlocked on a
+/// lock the main thread never released. Every in-crate kernel test missed it because they
+/// call `serve` with a writer that is not the process's stdout — this one drives the real
+/// binary over real pipes, which is where a client actually stands.
+#[test]
+fn a_job_over_real_pipes_reports_its_result_and_terminates() {
+    let fixture = o824_fixtures::build("broken-link").expect("fixture");
+    let mut kernel = Kernel::start(fixture.root());
+
+    kernel.send(json!({"jsonrpc":"2.0","id":1,"method":"o824.doctor","params":{"installId":"i1"}}));
+
+    let reply = kernel.next();
+    assert_eq!(reply["id"], 1);
+    let job_id = reply["result"]["jobId"]
+        .as_str()
+        .expect("a doctor answers with a job id")
+        .to_owned();
+
+    let mut saw_result = false;
+    let mut terminal = false;
+    // A bounded loop: a kernel that emits nothing fails here instead of hanging the suite.
+    for _ in 0..20 {
+        let message = kernel.next();
+        let params = &message["params"];
+        if params["jobId"] != serde_json::json!(job_id) {
+            continue;
+        }
+        match message["method"].as_str() {
+            Some("op.result") => {
+                saw_result = true;
+                assert!(
+                    params["result"]["findings"].is_array(),
+                    "the result is a doctor envelope: {message}"
+                );
+            }
+            Some("op.state") => {
+                let state = params["state"].as_str().unwrap_or_default();
+                if state == "done" || state == "failed" || state == "cancelled" {
+                    terminal = true;
+                    assert_eq!(state, "done", "{message}");
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    assert!(saw_result, "the job's result reached the client");
+    assert!(terminal, "the job reached a terminal state");
+    let (code, stderr) = kernel.finish();
+    assert_eq!(code, 0, "{stderr}");
+}

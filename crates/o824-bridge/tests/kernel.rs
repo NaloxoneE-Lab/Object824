@@ -63,11 +63,18 @@ fn discover_returns_the_fixture_installation() {
 /// A doctor is a job: its answer arrives as events, and a client that read only the reply
 /// would hang. The bridge waits for the terminal state and returns the envelope.
 #[test]
-#[ignore = "KERNEL-JOBS-OVER-PIPES: a job's events never reach a real client; see docs/P3-KERNEL-BUG.md"]
 fn a_doctor_job_returns_its_envelope() {
     let fixture = o824_fixtures::build("broken-link").expect("fixture");
     let mut bridge = Bridge::start(&options_for_fixture(&fixture)).expect("start");
-    let envelope = bridge.doctor("i1").expect("doctor");
+    let envelope = match bridge.doctor("i1") {
+        Ok(envelope) => envelope,
+        Err(error) => {
+            panic!(
+                "doctor failed: {error}; kernel stderr: {}",
+                bridge.stderr_text()
+            );
+        }
+    };
     let findings = envelope
         .get("findings")
         .and_then(|v| v.as_array())
@@ -76,20 +83,26 @@ fn a_doctor_job_returns_its_envelope() {
     assert!(bridge.close());
 }
 
-/// A plan for a start is a plan like any other, and applying it is refused on a fixture
-/// whose web package does not exist — the point is that the refusal travels.
+/// §21.5: `start` is a plan action, and the bridge carries the plan back whole.
 #[test]
-#[ignore = "KERNEL-JOBS-OVER-PIPES: a job's events never reach a real client; see docs/P3-KERNEL-BUG.md"]
-fn a_plan_action_travels_and_its_refusal_does_too() {
+fn a_start_plan_arrives_with_its_step() {
     let fixture = o824_fixtures::build("ok").expect("fixture");
     let mut bridge = Bridge::start(&options_for_fixture(&fixture)).expect("start");
-    // The fixture is a desktop installation with no app executable, so a start is refused
-    // by name rather than by silence.
-    let error = bridge.plan("i1", "start").expect_err("no executable");
+    let plan = bridge.plan("i1", "start").expect("a start plan");
+    let steps = plan["steps"].as_array().expect("steps");
+    assert_eq!(steps.len(), 1, "{plan}");
+    assert_eq!(steps[0]["kind"], "start-desktop", "{plan}");
+    assert!(bridge.close());
+}
+
+/// An action the kernel does not know comes back as an error with a code, not silence.
+#[test]
+fn an_unknown_action_is_an_error_with_a_code() {
+    let fixture = o824_fixtures::build("ok").expect("fixture");
+    let mut bridge = Bridge::start(&options_for_fixture(&fixture)).expect("start");
+    let error = bridge.plan("i1", "levitate").expect_err("must fail");
     match error {
-        BridgeError::Kernel { code, .. } => {
-            assert!(code.starts_with("E_"), "{code}");
-        }
+        BridgeError::Kernel { code, .. } => assert!(code.starts_with("E_"), "{code}"),
         other => panic!("unexpected error: {other:?}"),
     }
     assert!(bridge.close());
@@ -98,7 +111,6 @@ fn a_plan_action_travels_and_its_refusal_does_too() {
 /// A kernel that is asked to do something it does not know answers with an error, and the
 /// bridge turns that into a value with a code rather than a panic.
 #[test]
-#[ignore = "KERNEL-JOBS-OVER-PIPES: a job's events never reach a real client; see docs/P3-KERNEL-BUG.md"]
 fn an_unknown_install_id_is_an_error_with_a_code() {
     let fixture = o824_fixtures::build("ok").expect("fixture");
     let mut bridge = Bridge::start(&options_for_fixture(&fixture)).expect("start");
