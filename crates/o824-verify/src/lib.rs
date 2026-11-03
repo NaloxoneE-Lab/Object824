@@ -25,6 +25,7 @@ pub mod link;
 pub mod loader;
 pub mod pnpm;
 pub mod profile;
+pub mod tui;
 
 use std::path::{Path, PathBuf};
 
@@ -154,9 +155,22 @@ pub fn doctor(install: &Install, data_root: &Path) -> Envelope {
         findings.extend(pnpm::pnpm_build_gate(&root, profile));
     }
     findings.extend(journal::half_install(data_root));
+    // The tui's own checks. They read the machine — the Node on PATH — because that is
+    // what would run the application; a test passes the version instead.
+    findings.extend(tui::check(install, &node_version()));
 
     sort_findings(&mut findings);
     Envelope::new(findings)
+}
+
+/// The Node that would run a JS application: the one on `PATH`.
+fn node_version() -> String {
+    std::process::Command::new(std::env::var("O824_NODE").unwrap_or_else(|_| "node".to_owned()))
+        .arg("--version")
+        .output()
+        .ok()
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+        .unwrap_or_default()
 }
 
 /// Orders findings by check id and then by their `path` parameter, so repeated

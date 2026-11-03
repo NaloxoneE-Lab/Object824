@@ -47,9 +47,17 @@ pub fn select(
             // the plan builder refuses an installation with no id.
             None => local_install_id(&root),
         };
+        // The shape is read from the tree, not assumed: with three forms, `--root` on a
+        // tui package that was diagnosed as an installation would skip the tui's own
+        // checks and report a clean bill of health for a tree it never understood. Trees
+        // that do not validate (the lab's broken ones) keep the old answer, because
+        // "damaged desktop" is still the useful description for them.
+        let kind = o824_discovery::validate_with(Path::new(&root), Path::new(&home), None)
+            .map(|install| install.kind)
+            .unwrap_or_else(|_| o824_discovery::KIND_DESKTOP.to_owned());
         return Ok(Install {
             install_id,
-            kind: o824_discovery::KIND_DESKTOP.to_owned(),
+            kind,
             root: root.clone(),
             version: String::new(),
             profiles,
