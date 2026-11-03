@@ -287,6 +287,9 @@ pub(crate) struct PackageManifest {
 /// The `dsh` block of a profile manifest.
 #[derive(Debug, Default, serde::Deserialize)]
 pub(crate) struct DshBlock {
+    /// Parsed so the model spells out the manifest this crate reads; F16 and the repair
+    /// path look at `dsh.profile` themselves, which is why nothing here reads it back.
+    #[allow(dead_code)]
     #[serde(default)]
     pub(crate) profile: ProfileBlock,
 }
@@ -294,6 +297,10 @@ pub(crate) struct DshBlock {
 /// The `dsh.profile` block: the loader's bundle list.
 #[derive(Debug, Default, serde::Deserialize)]
 pub(crate) struct ProfileBlock {
+    /// F03 used to read this and no longer does: its criterion was refuted twice (see
+    /// `loader.rs`), and the ids a bundle actually provides are not the ones its name
+    /// spells. Kept because the manifest has the field.
+    #[allow(dead_code)]
     #[serde(default)]
     pub(crate) bundles: Vec<String>,
 }

@@ -1,16 +1,23 @@
-//! F03: duplicated loader entry ids.
+//! F03: one loader id, two entries.
 //!
-//! F03 is **advisory, not a fault**: on DSH 0.2.1-rc.3 the criterion is
-//! unproven. A patch row's id is a loader entry id (`timer`, `dsh-ops/shell`),
-//! not a bundle package name, and a row that names an entry the loader does not
-//! know only produces a warning — `patch: entry "X" not found` — while DSH boots
-//! normally. A genuinely duplicated loader entry id, injected with `insert:`,
-//! did not break `--dump-config` either (see `docs/PORTING-NOTES.md` §1).
+//! Two criteria were wrong before this one, and the machine tests are what corrected
+//! them:
 //!
-//! The finding therefore has **no repair** and must never drive an automatic
-//! edit: deleting a patch row on the strength of this intersection could remove
-//! an override the user wrote on purpose. The criterion has to be re-derived
-//! before this check can become repairable again.
+//! * "A patch row whose id matches a bundle" flagged the *normal* case: a bundle defines
+//!   an entry and the patch configures it. That is what `cordis.patch.yml` is for
+//!   (2026-11-01).
+//! * "A patch row naming an id no bundle provides" looked like the leftover DSH warns
+//!   about, but bundles provide entries their package names never mention, so it produced
+//!   eight warnings on a profile that works (2026-11-03).
+//!
+//! What the file can prove about itself: it gives **one id to two entries**. A row with
+//! `id` and `name` defines an entry; an `insert:` row defines one too. Two definitions
+//! under one id make DSH mount both and say nothing, so the plugin the user thinks is
+//! running may not be. A row with `id` and `config` is a patch of an entry defined
+//! elsewhere, and never counts as a definition.
+//!
+//! Warning, never a repair: which of the two entries the user meant is not something the
+//! kernel can know, and deleting either would be a guess.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -20,41 +27,24 @@ use o824_errs::Code;
 use o824_model::{Category, Finding, Severity};
 use serde_json::Value;
 
-use crate::link::read_manifest;
 use crate::{params, sort_findings, PARAM_DUPLICATES, PARAM_IDS, PROFILES_DIR_NAME};
 
-/// F03: a duplicated loader entry.
+/// F03: a loader entry id the configuration gets wrong.
 pub const CHECK_DUP_LOADER: &str = "F03";
 
-const MESSAGE_DUP_LOADER: &str = "Duplicate plugin entry";
+const MESSAGE_DUP_LOADER: &str = "Loader entry id problem";
 
-/// Returns the F03 finding for `<root>\profiles\<profile>\cordis.patch.yml`: an
-/// id that the profile's `dsh.profile.bundles` and the patch file both name.
+/// Returns the F03 finding for `<root>\profiles\<profile>\cordis.patch.yml`.
 ///
-/// A bundle is identified by the last segment of its package name — the id
-/// cordis loads it under — so `@deepseek-ai/dsh-base` intersects with a patch
-/// entry id `dsh-base`. The two id sets are intersected; a non-empty
-/// intersection is one finding whose `duplicates` parameter is the
-/// intersection's size.
+/// A definition is a row (or an `insert:` element) that carries both an `id` and a
+/// `name`: it brings an entry into the tree. Two definitions sharing an id is the
+/// finding; the `duplicates` parameter counts them and `ids` names them.
 ///
 /// The check never fabricates F03 from an unreadable file. A `package.json` or
-/// `cordis.patch.yml` that cannot be decoded is [`crate::profile`]'s fault
-/// (F16), and reporting a duplicate as well would double-count one root cause.
-/// That is the ruled division of labour, not an oversight. For the same reason a
-/// missing patch file, or a manifest that omits `dsh.profile.bundles`, means "no
-/// duplicates": there is nothing to compare, not a fault.
+/// `cordis.patch.yml` that cannot be decoded is [`crate::profile`]'s fault (F16), and
+/// reporting a loader problem as well would double-count one root cause.
 pub fn loader_entries(root: &Path, profile: &str) -> Vec<Finding> {
     let profile_dir = root.join(PROFILES_DIR_NAME).join(profile);
-
-    // Malformed or missing manifest: F16 owns it.
-    let Some(manifest) = read_manifest(&profile_dir.join("package.json")) else {
-        return Vec::new();
-    };
-    let bundles = &manifest.dsh.profile.bundles;
-    if bundles.is_empty() {
-        // No bundle ids means nothing can collide.
-        return Vec::new();
-    }
 
     // A missing patch file has no entries; an unreadable one is F16's.
     let Ok(patch_text) = fs::read(profile_dir.join("cordis.patch.yml")) else {
@@ -67,13 +57,16 @@ pub fn loader_entries(root: &Path, profile: &str) -> Vec<Finding> {
         // Invalid YAML (or a root that is not an array): F16 owns it.
         return Vec::new();
     };
-    // The typed decode in the reference implementation rejects anything that is
-    // not a sequence of mappings with a string `id`; such a file is F16's.
     let Some(entries) = document.as_sequence() else {
         return Vec::new();
     };
 
-    let mut patch_ids: BTreeSet<String> = BTreeSet::new();
+    let mut definitions: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    let mut count_definition = |id: &str| {
+        *definitions.entry(id.to_owned()).or_insert(0) += 1;
+    };
+
     for entry in entries {
         let Some(pairs) = entry.as_mapping() else {
             return Vec::new();
@@ -82,42 +75,47 @@ pub fn loader_entries(root: &Path, profile: &str) -> Vec<Finding> {
         if has_repeated_key(pairs) {
             return Vec::new();
         }
-        let Some(id) = entry.get("id") else {
-            continue;
-        };
-        let Some(id) = id.as_str() else {
-            // A non-string id cannot decode into the entry struct, and a null
-            // id decodes to "" — the first is F16's, the second is skipped.
-            return Vec::new();
-        };
-        if !id.is_empty() {
-            patch_ids.insert(id.to_owned());
+
+        // A row defines an entry when it names both the id and the plugin behind it.
+        if let (Some(id), Some(name)) = (entry.get("id"), entry.get("name")) {
+            let (Some(id), Some(name)) = (id.as_str(), name.as_str()) else {
+                // A non-string id cannot decode into the entry struct, and a null id
+                // decodes to "" — the first is F16's, the second is skipped.
+                continue;
+            };
+            if !id.is_empty() && !name.is_empty() {
+                count_definition(id);
+            }
         }
-    }
-    if patch_ids.is_empty() {
-        return Vec::new();
+
+        // `insert:` defines entries too, one per element.
+        if let Some(inserts) = entry.get("insert") {
+            let Some(inserts) = inserts.as_sequence() else {
+                continue;
+            };
+            for insert in inserts {
+                let Some(id) = insert.get("id") else {
+                    continue;
+                };
+                let Some(id) = id.as_str() else {
+                    continue;
+                };
+                if id.is_empty() {
+                    continue;
+                }
+                count_definition(id);
+            }
+        }
     }
 
-    // Deduplicate the bundle ids first, so `duplicates` counts the size of the
-    // id sets' intersection even if a manifest lists one package twice.
-    let mut seen_bundles: BTreeSet<String> = BTreeSet::new();
-    let mut duplicates: Vec<String> = Vec::new();
-    for bundle in bundles {
-        let id = loader_id(bundle);
-        if id.is_empty() {
-            continue;
-        }
-        if !seen_bundles.insert(id.clone()) {
-            continue;
-        }
-        if patch_ids.contains(&id) {
-            duplicates.push(id);
-        }
-    }
+    let duplicates: Vec<String> = definitions
+        .into_iter()
+        .filter(|(_, count)| *count > 1)
+        .map(|(id, _)| id)
+        .collect();
     if duplicates.is_empty() {
         return Vec::new();
     }
-    duplicates.sort();
 
     let finding = Finding::new(
         CHECK_DUP_LOADER,

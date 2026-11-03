@@ -254,10 +254,24 @@ def machine_checks():
         go_code, go_out = run_simple(GO_BIN, ["doctor", "--install", desktop_id, "--json"])
         rs_code, rs_out = run_simple(RUST_BIN, ["doctor", "--install", rust_desktop_id, "--json"])
 
-        # P1 added checks the reference implementation never had. They are named here so
-        # the divergence is a statement rather than a surprise: everything else must
-        # still match byte for byte, and the added check must be present and correct.
+        # Named divergences, so each one is a statement rather than a surprise.
+        #
+        # F11 was added by P1; the reference implementation never had it.
+        #
+        # F03 and F16 were *redefined* after machine tests refuted the oracle's rules:
+        #
+        #  * F03 used to flag a patch row whose id matched a bundle. That is the normal
+        #    case — a bundle defines an entry and the patch configures it — and the second
+        #    version (an id no bundle provides) produced eight warnings on a profile that
+        #    works, because bundles provide entries their names never mention. What the
+        #    file can prove is that it defines one id twice.
+        #  * F16 used to demand a top-level `id` on every patch row. Real DSH 0.2.1-rc.5
+        #    accepts `- insert: [{id, name}]` — it composed one into the config and exited
+        #    0 — and that is how this machine's own profile mounts a plugin.
+        #
+        # Everything else must still match byte for byte.
         ADDED = {"F11"}
+        REDEFINED = {"F03", "F16"}
 
         def without_added(text):
             try:
@@ -266,7 +280,7 @@ def machine_checks():
                 return text
             envelope["findings"] = [
                 finding for finding in envelope.get("findings", [])
-                if finding.get("checkId") not in ADDED
+                if finding.get("checkId") not in ADDED | REDEFINED
             ]
             return json.dumps(envelope, sort_keys=True)
 

@@ -57,8 +57,14 @@ pub const KINDS: [&str; 8] = [
 const ASAR_REL_PATH: &str = "resources/app.asar";
 /// A valid cordis document: DSH's root is an array.
 const EMPTY_CORDIS: &str = "[]\n";
-/// The leftover loader line that collides with the `dsh-echo` bundle (F03).
-const DUPLICATE_CORDIS_PATCH: &str = "- id: dsh-echo\n  enabled: true\n";
+/// One loader id, two entries: the row defines `dsh-echo` and the insert defines it again.
+///
+/// The two criteria this replaces were both refuted by machine tests (see
+/// `crates/o824-verify/src/loader.rs`); this shape is the one the file can prove about
+/// itself.
+const DUPLICATE_CORDIS_PATCH: &str = "\
+- id: dsh-echo\n  name: \"@acme/dsh-echo\"\n\
+- insert:\n  - id: dsh-echo\n    name: \"@acme/dsh-echo-again\"\n";
 /// Deliberately unparseable YAML: the flow sequence is never closed, so any
 /// YAML parser fails with a line number (F16).
 const BROKEN_CORDIS: &str = "- id: dsh-base\n  enabled: [true, false\n";

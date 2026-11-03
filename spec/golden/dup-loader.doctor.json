@@ -12,7 +12,7 @@
           "dsh-echo"
         ]
       },
-      "fallbackMessage": "Duplicate plugin entry"
+      "fallbackMessage": "Loader entry id problem"
     }
   ]
 }

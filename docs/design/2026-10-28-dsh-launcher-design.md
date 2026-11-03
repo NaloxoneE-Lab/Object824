@@ -478,7 +478,7 @@ o824 spec-check          JSON Schema + golden transcript 自检
 |---|---|---|---|---|
 | F01 | `ERR_MODULE_NOT_FOUND` 指向插件内部依赖 | 搬家/清理后 junction **穿透损坏**：`readlink` 有值、目标存在，但 `statSync(link + '/package.json')` 失败。判据：穿透可达性测试，不采信 readlink | A（原地重建为 junction） | `E_LINK_BROKEN` |
 | F02 | `cannot resolve profile bundle "X"` | profile 的 `node_modules` 链接穿透损坏或缺失。判据：逐个 bundle 做穿透验证 | A | `E_BUNDLE_MISSING` |
-| F03 | 插件树加载异常（**症状未证实**，2026-11-01 实测修订） | 实测 DSH 0.2.1-rc.3：`cordis.patch.yml` 的 `id` 指的是 loader entry id（`timer`、`dsh-ops/shell` 这类），**不是 bundle 包名**；指向不存在的 entry 只打 `patch: entry "X" not found` 警告并继续，进程照常启动。用 `insert` 造出真正重复的 entry id，`--dump-config` 合成阶段不报错，**真启动（web profile，服务正常监听）也不失败**：重复 id 指向不存在的模块时只得到 `2 entries did not activate` 警告，指向同一个真实模块时完全静默。`app.asar` 里没有 `duplicate loader entry id` 这个字符串。原判据"patch 行 id 与 bundles 求交集"**不成立** | P0：**只提示**（severity `warning`，不自动修）；判据待重定（P1） | `E_DUP_LOADER` |
+| F03 | 插件树的 loader entry id 冲突 | `cordis.patch.yml` 里**同一个 id 被定义两次**（一行 `id`+`name`，或 `insert:` 元素），DSH 会静默挂载两个 entry。**2026-11-03 重定**：旧判据（patch 行的 id 与 bundle 同名）把正常覆盖当故障；中间那版（id 不在 bundles 里）在真实 profile 上误报 8 条，因为 bundle 提供的 entry 名与包名不同。能由文件自身证明的只有重复定义。warning，不自动修 |
 | F04 | 树外插件（`link:`）导致起不来 | 依赖桥悬空。**一条桥断 = 整个 DSH 崩在 readiness 之前**，不是单插件失效。判据：桥存在性 + 指向当前闭包 + 穿透可达。**2026-11-01 实测补充**：宿主的 bundle 都打在 `app.asar` 里（`app.asar.unpacked` 只有 koffi / fontkit / libreoffice-kit 这类 native 依赖），junction 指不进 asar，所以"重建桥"只在 profile 自己的 `node_modules` 已有该包时可行；否则等价于重装插件 | A（有目标才重建；否则只诊断，重装属 P1） | `E_BRIDGE_DANGLING` |
 | F05 | 升级/重装报 EPERM / EBUSY | 运行中的实例锁着原生模块（实测 `koffi.node`）。判据：以共享模式 None 独占打开该 `.node` | B（先停实例再重装） | `E_NATIVE_LOCKED` |
 | F06 | 双击无反应 | asar / 安装文件损坏（下载中断、杀软隔离）。判据：asar 头可解析 + 完整性块校验 + 关键文件存在 | B（重装或回滚） | `E_ASAR_CORRUPT` |
@@ -501,7 +501,7 @@ o824 spec-check          JSON Schema + golden transcript 自检
 |---|---|---|---|---|
 | F14 | 会话看起来是空的 | 会话是**追加式多帧 zstd**，Node 的 `zstdDecompressSync` 只解第一帧（只拿到约 191 字节头）。判据：帧计数，必要时用外部 `zstd` 全解 | C | `E_SESSION_FRAME` |
 | F15 | 回退旧版读不了会话 | 会话格式升级不可降级（0.1.5 起 V3）。判据：读会话头里的格式版本 | C（回滚前必须警告） | `E_SESSION_FORMAT` |
-| F16 | 配置解析失败 / 写不进 | profile 的 YAML 写坏、磁盘满、权限不足。判据：解析器 + 磁盘余量 + 可写性 | A（语法类）/ C（资源类） | `E_PROFILE_PARSE` / `E_DISK_FULL` / `E_PERMISSION` |
+| F16 | `package.json` / `cordis.yml` / `cordis.patch.yml` 不可解析 | 形状规则：patch 行要么带字符串 `id`，要么是 `insert:` 序列。**2026-11-03 修正**：真机 DSH 0.2.1-rc.5 接受 `- insert: [{id, name}]`（合成进配置并 exit 0），旧规则要求每行都有顶层 `id`，把合法文件报成不可解析 |
 
 **D. 安装 / 升级 / 插件管理**
 

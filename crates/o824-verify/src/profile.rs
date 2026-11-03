@@ -308,7 +308,7 @@ pub fn manifest_shape_reason(document: &Value) -> Option<&'static str> {
 }
 
 /// Returns the rule one `cordis.patch.yml` element breaks, or `None` when it is
-/// a mapping with a usable id.
+/// a mapping that either names an entry with a usable `id` or adds rows with `insert`.
 fn patch_entry_reason(entry: &Node) -> Option<&'static str> {
     let Some(pairs) = entry.as_mapping() else {
         return Some(REASON_PATCH_ENTRY_NOT_MAPPING);
@@ -327,9 +327,24 @@ fn patch_entry_reason(entry: &Node) -> Option<&'static str> {
         }
     }
 
+    // A patch row does one of two things: it names an existing entry with `id`, or it
+    // adds rows with `insert`. DSH 0.2.1-rc.5 accepts the second shape — it composed
+    // `- insert: [{id: probe-only, name: "@acme/probe"}]` into the config and exited 0 —
+    // so demanding an `id` on every entry called a legal file unparseable.
+    let has_insert = entry
+        .get("insert")
+        .map(|value| value.as_sequence().is_some())
+        .unwrap_or(false);
     let Some(id) = entry.get("id") else {
+        if has_insert {
+            return None;
+        }
         return Some(REASON_PATCH_ENTRY_MISSING_ID);
     };
+    if has_insert && id.is_null() {
+        // Both shapes in one row: the insert is what this row is for.
+        return None;
+    }
     if id.is_null() {
         return Some(REASON_PATCH_ENTRY_MISSING_ID);
     }
