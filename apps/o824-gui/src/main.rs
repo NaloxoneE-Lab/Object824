@@ -80,14 +80,22 @@ fn last_problem() -> String {
 /// readable. Every line is flushed: the process may not get to run a destructor.
 fn log_line(line: &str) {
     use std::io::Write as _;
-    // A file, not a directory: creating a file directly under %LOCALAPPDATA% succeeds in
-    // places where creating a folder does not, and this function has to work when the rest
-    // of the program is what is broken.
+    // Candidates in order of how likely they are to be writable for the account that
+    // double-clicked: next to the program (it lives in a folder the user owns),
+    // %LOCALAPPDATA%, then %TEMP%. A file, not a directory — creating a file succeeds in
+    // places where creating a folder is denied.
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(directory) = exe.parent() {
+            candidates.push(directory.join("o824-gui.log"));
+        }
+    }
     for variable in ["LOCALAPPDATA", "TEMP"] {
-        let Some(base) = std::env::var_os(variable) else {
-            continue;
-        };
-        let path = std::path::PathBuf::from(base).join("O824-gui.log");
+        if let Some(base) = std::env::var_os(variable) {
+            candidates.push(std::path::PathBuf::from(base).join("O824-gui.log"));
+        }
+    }
+    for path in candidates {
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
             .append(true)

@@ -26,3 +26,4 @@
 # The GUI has its own workspace and its own target directory.
 apps/o824-gui/target/
 apps/o824-gui/gen/
+o824-gui.log
