@@ -114,3 +114,29 @@ cargo build                    # 现在编出来的是 MSVC 目标
 
 我的进程跑在受限令牌 `CodexSandboxUsers` 下（ACL 里可见：`ReadAndExecute`），所以**我这边**启动
 GUI 一定失败，与你看到的闪退是两回事。判断 GUI 是否可用，只能由你在桌面上双击验证。
+
+## 第二次闪退：数据目录建不出来（2026-11-03 深夜）
+
+加了日志之后拿到了确切原因：
+
+```
+webview data dir FAILED: ...\AppData\Local\O824-webview2 (拒绝访问 os error 5)
+webview data dir FAILED: ...\TEMP\O824-webview2 (拒绝访问 os error 5)
+PANIC: tauri ... Failed to setup app: 拒绝访问
+```
+
+**我的会话建不出这个目录**（沙箱令牌只有受限权限），于是回退到 WebView2 的默认目录，同样被拒，
+Tauri 在 setup 阶段 panic。而 Tauri 是**用 panic 报告 setup 失败**的——所以我原先写在 `run()`
+之后的对话框永远轮不到执行，这就是"闪退且无声"的机制。
+
+现在 app 的行为：
+
+1. 浏览器数据目录有**回退链**：`%LOCALAPPDATA%\O824-webview2` → `%TEMP%\O824-webview2` → WebView2 默认；
+2. 全都失败时**不再静默退出**：`catch_unwind` 包住 `run()`，弹原生对话框，**写明哪个目录、什么错误码**（§7.4）；
+3. 日志写 `%LOCALAPPDATA%\O824-gui.log`，写不进去就写 `%TEMP%\O824-gui.log`——**建文件而不是建目录**，
+   因为在"建目录被拒"的地方建文件常常仍然允许。
+
+## 判断 GUI 是否可用的唯一办法
+
+我的会话沙箱受限，**不能**作为判据。只能由你在桌面上双击验证；如果仍然失败，对话框现在会写明
+是哪个目录、什么错误码，把那段文字发我即可定位。
