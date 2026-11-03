@@ -51,6 +51,36 @@ pub fn package_in_prefix(prefix: &std::path::Path) -> Option<PathBuf> {
     path.join(PACKAGE_JSON_NAME).is_file().then_some(path)
 }
 
+/// The tui package inside `prefix`, when it is installed there.
+pub fn tui_package_in_prefix(prefix: &std::path::Path) -> Option<PathBuf> {
+    let mut path = prefix.join("node_modules");
+    for part in crate::TUI_PACKAGE_NAME.split('/') {
+        path = path.join(part);
+    }
+    path.join(PACKAGE_JSON_NAME).is_file().then_some(path)
+}
+
+/// The tui installations among `prefixes`.
+pub fn tui_roots(prefixes: &[PathBuf]) -> Vec<crate::machine::SourceRoot> {
+    let mut seen: Vec<PathBuf> = Vec::new();
+    let mut roots = Vec::new();
+    for prefix in prefixes {
+        let Some(package) = tui_package_in_prefix(prefix) else {
+            continue;
+        };
+        if seen.iter().any(|other| other == &package) {
+            continue;
+        }
+        seen.push(package.clone());
+        roots.push(crate::machine::SourceRoot {
+            root: package.display().to_string(),
+            registry_version: None,
+            source: Source::Web,
+        });
+    }
+    roots
+}
+
 /// The web installations among `prefixes`.
 pub fn web_roots(prefixes: &[PathBuf]) -> Vec<crate::machine::SourceRoot> {
     let mut seen: Vec<PathBuf> = Vec::new();

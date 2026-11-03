@@ -47,7 +47,7 @@ pub use machine::{
 pub use processes::{host_processes, running_host_roots, RunningHost};
 pub use scan::{default_scan_dirs, scan_roots, DEFAULT_BUDGET, DEFAULT_MAX_ENTRIES};
 pub use shortcuts::{default_shortcut_dirs, shortcut_roots};
-pub use web::{global_prefixes, package_in_prefix, web_roots};
+pub use web::{global_prefixes, package_in_prefix, tui_package_in_prefix, tui_roots, web_roots};
 
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
@@ -73,6 +73,20 @@ pub const KIND_WEB: &str = "web";
 
 /// The package name `npm i -g @deepseek-ai/dsh` puts on disk.
 pub const WEB_PACKAGE_NAME: &str = "@deepseek-ai/dsh";
+
+/// The installation shape of the third-party terminal client.
+pub const KIND_TUI: &str = "tui";
+
+/// The npm package the tui is installed from.
+///
+/// Verified on this machine (2026-11-03): `@deepseek-harness-tui/dsh-tui` 0.18.0, with
+/// `dsh-tui` and `dst` shims, a profile at `<home>/profiles/dsh-tui`, and its own state
+/// directory at `<user>\.dsh-tui` (`last-run.json`, `effect-ledger.jsonl`, `session-index.json`).
+/// The design document's list of files for that directory was a guess and is wrong.
+pub const TUI_PACKAGE_NAME: &str = "@deepseek-harness-tui/dsh-tui";
+
+/// The tui's own state directory, next to the DSH home rather than inside it.
+pub const TUI_STATE_DIR: &str = ".dsh-tui";
 /// The manifest that names a package and gives it its entry point.
 pub const PACKAGE_JSON_NAME: &str = "package.json";
 /// Marks a tree that passed [`validate`].
@@ -179,6 +193,71 @@ pub fn validate_web(root: &Path, home: &Path) -> Result<Install, Error> {
     })
 }
 
+/// The tui form: a global npm package with its own state directory.
+///
+/// It is not an app the kernel starts — a terminal client belongs to a terminal — so this
+/// validates it for diagnosis and leaves starting to the person at the keyboard.
+pub fn validate_tui(root: &Path, home: &Path) -> Result<Install, Error> {
+    let clean = clean_path(root);
+    let manifest_path = clean.join(PACKAGE_JSON_NAME);
+    let text = fs::read_to_string(&manifest_path).map_err(|error| {
+        Error::new(
+            Code::InstallDir,
+            format!(
+                "install: {:?} is not a DeepSeek Harness tui package (cannot read {PACKAGE_JSON_NAME}: {error})",
+                clean.display().to_string()
+            ),
+        )
+        .with_param("root", clean.display().to_string())
+    })?;
+    let manifest: serde_json::Value = serde_json::from_str(&text).map_err(|error| {
+        Error::new(
+            Code::InstallDir,
+            format!(
+                "install: {:?} has an unreadable {PACKAGE_JSON_NAME}: {error}",
+                clean.display().to_string()
+            ),
+        )
+        .with_param("root", clean.display().to_string())
+    })?;
+
+    let mut missing: Vec<String> = Vec::new();
+    if manifest.get("name").and_then(|name| name.as_str()) != Some(TUI_PACKAGE_NAME) {
+        missing.push(TUI_PACKAGE_NAME.to_owned());
+    }
+    let version = manifest
+        .get("version")
+        .and_then(|version| version.as_str())
+        .unwrap_or_default()
+        .to_owned();
+    if version.is_empty() {
+        missing.push("version".to_owned());
+    }
+
+    if !missing.is_empty() {
+        let display = clean.display();
+        return Err(Error::new(
+            Code::InstallDir,
+            format!(
+                "install: {display:?} is not a usable DeepSeek Harness tui package (missing {})",
+                missing.join(", ")
+            ),
+        )
+        .with_param("root", display.to_string())
+        .with_param("missing", missing));
+    }
+
+    Ok(Install {
+        install_id: String::new(),
+        kind: KIND_TUI.to_owned(),
+        root: clean.display().to_string(),
+        version,
+        profiles: profile_names(home),
+        health: HEALTH_OK.to_owned(),
+        home: home.display().to_string(),
+    })
+}
+
 /// Resolves the DSH home directory.
 ///
 /// The first non-empty value wins: `explicit` (the `--home` flag), `O824_HOME`,
@@ -272,6 +351,9 @@ pub fn validate_with(
     let clean = clean_path(root);
     // The shape is decided by what is on disk, not by which layer found the path: a
     // scan or a shortcut can land on either shape, and the check that follows differs.
+    if package_name(&clean).as_deref() == Some(TUI_PACKAGE_NAME) {
+        return validate_tui(&clean, home);
+    }
     if package_name(&clean).as_deref() == Some(WEB_PACKAGE_NAME) {
         return validate_web(&clean, home);
     }

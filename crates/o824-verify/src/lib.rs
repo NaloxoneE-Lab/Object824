@@ -73,6 +73,13 @@ pub fn version_drift(installs: &[Install]) -> Option<Finding> {
     let mut versions: std::collections::BTreeMap<String, String> =
         std::collections::BTreeMap::new();
     for install in installs {
+        // Only the forms that run DSH itself. The tui is a third-party client with its
+        // own version series (0.18.0 against 0.2.1-rc.5 on the machine this was written
+        // on), so comparing it against DSH would report a drift that means nothing — on
+        // the very home where a false warning is most expensive.
+        if !matches!(install.kind.as_str(), "desktop" | "web") {
+            continue;
+        }
         let version = install.version.trim();
         if version.is_empty() {
             continue;

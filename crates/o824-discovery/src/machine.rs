@@ -233,6 +233,9 @@ pub fn standard_roots(options: &Options) -> Vec<SourceRoot> {
             options.web_prefixes.clone()
         };
         roots.extend(crate::web::web_roots(&prefixes));
+        // The tui is installed the same way (a global npm package) and is discovered by
+        // the same layer; the package name is what tells them apart.
+        roots.extend(crate::web::tui_roots(&prefixes));
     }
     // The scan is the last resort, and it costs its whole budget. Running it after an
     // earlier layer already answered would spend 400 ms on every command to add a
