@@ -52,20 +52,97 @@ struct InstallRow {
 /// The kernel this window talks to, kept for the life of the window.
 struct Kernel(Mutex<Option<Bridge>>);
 
+/// The last concrete reason the window could not start, kept so the dialog can say it.
+///
+/// "The window could not be created" without the reason is the kind of message that makes
+/// someone open Task Manager; the directory and the OS error are what make it actionable.
+static LAST_PROBLEM: Mutex<Option<String>> = Mutex::new(None);
+
+fn remember_problem(text: String) {
+    log_line(&format!("problem: {text}"));
+    if let Ok(mut slot) = LAST_PROBLEM.lock() {
+        *slot = Some(text);
+    }
+}
+
+fn last_problem() -> String {
+    LAST_PROBLEM
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
+        .unwrap_or_else(|| "no detail was recorded".to_owned())
+}
+
+/// Appends one line to `%LOCALAPPDATA%\O824\gui.log`.
+///
+/// A window that dies before it draws anything leaves no console and no event log entry a
+/// person can find, so the first thing this program does is make sure the next crash is
+/// readable. Every line is flushed: the process may not get to run a destructor.
+fn log_line(line: &str) {
+    use std::io::Write as _;
+    // A file, not a directory: creating a file directly under %LOCALAPPDATA% succeeds in
+    // places where creating a folder does not, and this function has to work when the rest
+    // of the program is what is broken.
+    for variable in ["LOCALAPPDATA", "TEMP"] {
+        let Some(base) = std::env::var_os(variable) else {
+            continue;
+        };
+        let path = std::path::PathBuf::from(base).join("O824-gui.log");
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            let since_epoch = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_secs())
+                .unwrap_or(0);
+            let _ = writeln!(file, "{since_epoch} pid={} {line}", std::process::id());
+            let _ = file.flush();
+            return;
+        }
+    }
+}
+
 fn main() {
+    log_line("=== start ===");
+    log_line("=== start ===");
+    log_line(&format!(
+        "exe={:?} cwd={:?}",
+        std::env::current_exe().ok(),
+        std::env::current_dir().ok()
+    ));
+    std::panic::set_hook(Box::new(|info| {
+        log_line(&format!("PANIC: {info}"));
+    }));
     // Before Tauri starts: the data directory it will use has to be ours, not one an
     // elevated run left behind.
     prepare_webview_data();
+    log_line(&format!(
+        "kernel={:?} webview_data={:?}",
+        resolve_kernel(),
+        std::env::var_os("WEBVIEW2_USER_DATA_FOLDER")
+    ));
 
-    let result = tauri::Builder::default()
+    let started = std::panic::catch_unwind(|| {
+        tauri::Builder::default()
         .manage(Kernel(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![screen, diagnose])
-        .run(tauri::generate_context!());
+        .run(tauri::generate_context!())
+    });
 
-    if let Err(error) = result {
-        // §7.4: a window that cannot start must say where the command line is, because the
-        // command line still works.
-        report_start_failure(&error.to_string());
+    // §7.4: a window that cannot start must say where the command line is, because the
+    // command line still works. Tauri reports a failed setup by panicking, so the catch is
+    // around the call rather than on its result.
+    match started {
+        Ok(Ok(())) => log_line("=== window closed normally ==="),
+        Ok(Err(error)) => {
+            log_line(&format!("tauri error: {error}"));
+            report_start_failure(&error.to_string());
+        }
+        Err(_) => {
+            report_start_failure(&last_problem());
+        }
     }
 }
 
@@ -76,16 +153,30 @@ fn main() {
 /// before the first pixel. Choosing the path here and creating it as this user removes the
 /// whole class of failure; when even that fails, the app reports it instead of crashing.
 fn prepare_webview_data() {
-    let Some(local) = std::env::var_os("LOCALAPPDATA") else {
-        return;
-    };
-    let directory = std::path::PathBuf::from(local)
-        .join("O824")
-        .join("WebView2");
-    if std::fs::create_dir_all(&directory).is_ok() {
-        // WebView2 reads this before the window is created.
-        std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", &directory);
+    // More than one candidate, in order: a folder this account owns, then the temp
+    // directory, then WebView2's own default. An intermediate directory created by another
+    // account is what broke the first attempt, and a single hard-coded path is one more
+    // thing that can be wrong on one machine.
+    let mut candidates = Vec::new();
+    for variable in ["LOCALAPPDATA", "TEMP"] {
+        if let Some(base) = std::env::var_os(variable) {
+            candidates.push(std::path::PathBuf::from(base).join("O824-webview2"));
+        }
     }
+    for directory in candidates {
+        match std::fs::create_dir_all(&directory) {
+            Ok(()) => {
+                log_line(&format!("webview data dir ready: {}", directory.display()));
+                std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", &directory);
+                return;
+            }
+            Err(error) => remember_problem(format!(
+                "cannot use {} as the browser data folder ({error})",
+                directory.display()
+            )),
+        }
+    }
+    log_line("webview data dir: none usable, leaving the default");
 }
 
 /// The first screen: what is installed, and what the main button should say.
@@ -222,9 +313,15 @@ fn resolve_kernel() -> Option<std::path::PathBuf> {
     let mut directory = exe.parent()?.to_path_buf();
     for _ in 0..4 {
         for profile in ["release", "debug"] {
-            let candidate = directory.join(profile).join(format!("o824{}", std::env::consts::EXE_SUFFIX));
-            if candidate.is_file() {
-                return Some(candidate);
+            for layout in [vec![profile], vec!["target", profile]] {
+                let mut candidate = directory.clone();
+                for part in &layout {
+                    candidate = candidate.join(part);
+                }
+                let candidate = candidate.join(format!("o824{}", std::env::consts::EXE_SUFFIX));
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
             }
         }
         directory = directory.parent()?.to_path_buf();
