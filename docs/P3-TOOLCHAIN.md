@@ -87,3 +87,30 @@ cargo build                    # 现在编出来的是 MSVC 目标
 ```
 
 `scripts/env-msvc.sh` 的路径是从 vswhere 与 SDK 目录**探测**出来的，不写死；换机器只要装在同一类位置就能用。
+
+## 双击闪退的真相（2026-11-03）
+
+现象：**以管理员运行正常，直接双击闪退。**
+
+原因不在 Tauri，而在 WebView2 的数据目录：
+
+- WebView2 默认把数据放在 `%LOCALAPPDATA%\<identifier>`。
+- 管理员运行时创建的那个目录带**高完整性级别**（High IL），普通权限的进程即使 DACL 里写着
+  FullControl 也写不进去——Windows 的强制完整性检查先于 DACL 生效。
+- 于是双击（Medium IL）在创建窗口前就 Access Denied，进程直接退出，看起来就是"闪退"。
+
+那条被污染的目录是 `%LOCALAPPDATA%\dev.o824.gui.spike`，已删除。
+
+**真 app 的修法**（已实现，`apps/o824-gui/src/main.rs::prepare_webview_data`）：
+
+1. 自己在**当前用户**身份下创建 `%LOCALAPPDATA%\O824\WebView2`；
+2. 把它设成 `WEBVIEW2_USER_DATA_FOLDER`；
+3. 如果连窗口都起不来，弹原生 MessageBox 指向命令行（§7.4），而不是静默退出。
+
+这样即使以后有人用管理员跑过一次，也不会毁掉普通用户的启动路径——因为路径是 app 自己建的、
+属于当前用户。
+
+## 另一个环境的坑（只影响我这个会话）
+
+我的进程跑在受限令牌 `CodexSandboxUsers` 下（ACL 里可见：`ReadAndExecute`），所以**我这边**启动
+GUI 一定失败，与你看到的闪退是两回事。判断 GUI 是否可用，只能由你在桌面上双击验证。

@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*"]
 # The YAML spike is a throw-away probe with its own dependency set; it must not
 # leak crates into the shipped workspace.
-exclude = ["spikes/yaml-spike"]
+exclude = ["spikes/yaml-spike", "apps/o824-gui"]
 
 [workspace.package]
 version = "0.1.0"

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>O824</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- The window draws sentences the kernel produced; it never invents one. -->
+    <header class="bar">
+      <span class="mark">824</span>
+      <span class="trust" id="trust"></span>
+    </header>
+
+    <main id="main">
+      <section class="hero">
+        <h1 id="headline">…</h1>
+        <p id="reason" class="reason"></p>
+        <button id="primary" class="primary" hidden></button>
+      </section>
+
+      <section id="installations" class="list" hidden></section>
+      <section id="findings" class="list" hidden></section>
+      <section id="failure" class="failure" hidden></section>
+    </main>
+
+    <footer class="bar">
+      <button id="copy" class="quiet" hidden>Copy diagnostic information</button>
+      <span class="spacer"></span>
+      <span id="status" class="status"></span>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>

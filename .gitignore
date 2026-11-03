@@ -22,3 +22,7 @@
 # build` and by CI, never committed.
 /packages/o824-sdk/dist/
 /packages/o824-sdk/node_modules/
+
+# The GUI has its own workspace and its own target directory.
+apps/o824-gui/target/
+apps/o824-gui/gen/

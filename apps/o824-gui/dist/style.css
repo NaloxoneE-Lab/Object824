@@ -1,0 +1,176 @@
+/* The window's look: quiet, one strong action, nothing decorative enough to be in the way.
+ *
+ * The palette is deliberately dull — this is a tool someone opens when something is
+ * broken, and a bright UI reads as an advert. */
+:root {
+  color-scheme: light dark;
+  --ink: #10151f;
+  --paper: #f7f8fa;
+  --muted: #5c6573;
+  --line: #dde1e7;
+  --accent: #2d6cdf;
+  --warn: #b4531f;
+  --radius: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #eef1f6;
+    --paper: #151a22;
+    --muted: #9aa4b2;
+    --line: #2a323d;
+    --accent: #6f9cf3;
+    --warn: #e08b52;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+footer.bar {
+  border-bottom: none;
+  border-top: 1px solid var(--line);
+  margin-top: auto;
+}
+
+.mark {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 8px;
+  padding: 2px 8px;
+  font-size: 13px;
+}
+
+.trust,
+.status {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+main {
+  padding: 32px 20px;
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+  display: grid;
+  gap: 24px;
+}
+
+h1 {
+  font-size: 26px;
+  line-height: 1.25;
+  margin: 0 0 8px;
+}
+
+.reason {
+  color: var(--muted);
+  margin: 0 0 20px;
+  max-width: 56ch;
+}
+
+.primary {
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius);
+  padding: 12px 22px;
+  cursor: pointer;
+}
+
+.primary:hover {
+  filter: brightness(1.06);
+}
+
+.quiet {
+  font: inherit;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.list {
+  display: grid;
+  gap: 10px;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  cursor: pointer;
+}
+
+.row:hover {
+  border-color: var(--accent);
+}
+
+.detail {
+  color: var(--muted);
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+
+.card h2 {
+  font-size: 16px;
+  margin: 0 0 6px;
+}
+
+.card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.card .next {
+  margin-top: 10px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.failure {
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  color: var(--warn);
+}
