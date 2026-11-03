@@ -4,6 +4,11 @@
 // copy is tested for jargon and for having a next step. Nothing here decides what a
 // finding means, and nothing here talks to the kernel directly — it cannot, deliberately:
 // §7.5 gives the process handle to whoever spawns, and that is the Rust side.
+//
+// The one thing this file does decide is *when*: the list is drawn as soon as discovery
+// answers (about a tenth of a second), and each row is diagnosed separately because a
+// diagnosis walks every plugin folder and takes seconds. Waiting for three of them behind a
+// blank page is what made the window look stuck.
 
 const invoke = window.__TAURI__.core.invoke;
 
@@ -20,43 +25,54 @@ const elements = {
 };
 
 // §20.6: the trust statement is fixed and always visible, and it says "unsigned" out loud.
-const TRUST = "Unofficial tool · unsigned · github.com/NaloxoneE-Lab/Object824";
+const TRUST = "Unofficial tool · unsigned · github.com/Naloxone-E-Lab/Object824";
 
-function drawScreen(screen) {
-  elements.trust.textContent = TRUST;
-  elements.headline.textContent = screen.headline;
-  elements.reason.textContent = screen.reason;
+// What each row says while its diagnosis is still running.
+const CHECKING = "checking…";
 
-  if (screen.next_step) {
-    elements.primary.textContent = screen.next_step;
+function setHeadline(copy) {
+  elements.headline.textContent = copy.headline;
+  elements.reason.textContent = copy.reason;
+  if (copy.next_step) {
+    elements.primary.textContent = copy.next_step;
     elements.primary.hidden = false;
+  } else {
+    elements.primary.hidden = true;
   }
+}
 
-  elements.installations.hidden = screen.installations.length === 0;
+function drawRows(rows) {
+  elements.installations.hidden = rows.length === 0;
   elements.installations.replaceChildren(
-    ...screen.installations.map((install) => {
+    ...rows.map((install) => {
       const row = document.createElement("button");
       row.className = "row";
+      row.dataset.id = install.id;
+
       const name = document.createElement("span");
       name.textContent = `${install.name} ${install.version}`;
+
       const detail = document.createElement("span");
       detail.className = "detail";
-      detail.textContent =
-        install.findings === 0
-          ? "no problems found"
-          : `${install.findings} problem(s), ${install.repairable} fixable automatically`;
+      detail.dataset.role = "detail";
+      detail.textContent = CHECKING;
+
       row.append(name, detail);
-      // A click asks for the detail; the detail is a sentence per finding.
-      row.addEventListener("click", () => showFindings(install.id));
+      row.addEventListener("click", () => diagnoseRow(install));
       return row;
     }),
   );
-
-  elements.copy.hidden = screen.installations.length === 0;
-  elements.status.textContent = "";
 }
 
-async function showFindings(installId) {
+/// The detail line for a diagnosed row.
+function detailFor(row) {
+  if (row.findings === 0) return "no problems found";
+  const fixable = row.repairable > 0 ? `, ${row.repairable} fixable automatically` : "";
+  return `${row.findings} problem(s)${fixable}`;
+}
+
+async function showFindings(installId, options = {}) {
+  if (!options.quiet) elements.status.textContent = "reading the details…";
   try {
     const findings = await invoke("diagnose", { installId });
     elements.findings.hidden = findings.length === 0;
@@ -75,6 +91,7 @@ async function showFindings(installId) {
         return card;
       }),
     );
+    elements.status.textContent = "";
   } catch (error) {
     showFailure(String(error));
   }
@@ -90,10 +107,79 @@ function showFailure(message) {
 
 async function start() {
   elements.trust.textContent = TRUST;
+
+  // First what the window says while it works, then the list, then the diagnoses.
   try {
-    const screen = await invoke("screen");
-    drawScreen(screen);
+    setHeadline(await invoke("checking", { localeTag: null }));
   } catch (error) {
+    showFailure(String(error));
+    return;
+  }
+
+  let rows;
+  try {
+    rows = await invoke("list");
+  } catch (error) {
+    showFailure(String(error));
+    return;
+  }
+
+  drawRows(rows);
+  elements.copy.hidden = rows.length === 0;
+
+  if (rows.length === 1) {
+    // One installation: diagnosing it is the first screen's job, and the user sees the
+    // result without having to ask. §20.1's third path.
+    await diagnoseRow(rows[0]);
+    return;
+  }
+
+  // Several installations: diagnosing all of them would take half a minute for answers
+  // nobody asked for. The design says "pick one to work on", so the rows say what they are
+  // and a click diagnoses the one that was chosen.
+  rows.forEach((install) => {
+    const detail = elements.installations.querySelector(
+      `[data-id="${install.id}"] [data-role="detail"]`,
+    );
+    if (detail) detail.textContent = "click to check";
+  });
+  try {
+    setHeadline(
+      await invoke("summarize", {
+        installs: rows.map((row) => ({
+          kind: row.kind,
+          version: row.version,
+          findings: 0,
+          repairable: 0,
+        })),
+      }),
+    );
+  } catch (error) {
+    showFailure(String(error));
+  }
+}
+
+/// Diagnoses one row, in place, and folds the answer into the headline.
+async function diagnoseRow(install) {
+  const detail = () =>
+    elements.installations.querySelector(`[data-id="${install.id}"] [data-role="detail"]`);
+  if (detail()) detail().textContent = CHECKING;
+  elements.status.textContent = "checking this one…";
+  try {
+    const findings = await invoke("diagnose", { installId: install.id });
+    const repairable = findings.filter((finding) => finding.repairable).length;
+    const result = {
+      kind: install.kind,
+      version: install.version,
+      findings: findings.length,
+      repairable,
+    };
+    if (detail()) detail().textContent = detailFor(result);
+    elements.status.textContent = "";
+    setHeadline(await invoke("summarize", { installs: [result] }));
+    await showFindings(install.id, { quiet: true });
+  } catch (error) {
+    if (detail()) detail().textContent = "could not be checked";
     showFailure(String(error));
   }
 }
@@ -105,8 +191,8 @@ elements.primary?.addEventListener("click", () => {
 
 elements.copy?.addEventListener("click", async () => {
   try {
-    const screen = await invoke("screen");
-    await navigator.clipboard.writeText(JSON.stringify(screen, null, 2));
+    const text = [elements.headline.textContent, elements.reason.textContent].join("\n");
+    await navigator.clipboard.writeText(text);
     elements.status.textContent = "copied";
   } catch (error) {
     elements.status.textContent = String(error);

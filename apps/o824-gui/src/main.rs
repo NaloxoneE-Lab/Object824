@@ -25,7 +25,7 @@
 use std::sync::Mutex;
 
 use o824_bridge::{Bridge, Options};
-use o824_present::{first_use, Installation, Locale};
+use o824_present::Locale;
 use serde::Serialize;
 
 /// What the window asks for when it starts.
@@ -43,6 +43,7 @@ struct Screen {
 #[derive(Serialize)]
 struct InstallRow {
     id: String,
+    kind: String,
     name: String,
     version: String,
     findings: usize,
@@ -159,7 +160,9 @@ fn main() {
             Ok(())
         })
         .manage(Kernel(Mutex::new(None)))
-        .invoke_handler(tauri::generate_handler![screen, diagnose])
+        .invoke_handler(tauri::generate_handler![
+            list, checking, diagnose, summarize
+        ])
         .run(tauri::generate_context!())
     });
 
@@ -263,13 +266,14 @@ fn prepare_webview_data() {
     log_line("webview data dir: none usable, leaving the default");
 }
 
-/// The first screen: what is installed, and what the main button should say.
+/// The installations on this machine, without diagnosing them.
 ///
-/// `async` on purpose: Tauri runs a synchronous command on the main thread, and this one
-/// spawns a process and waits for a diagnosis — a window that freezes while it thinks is
-/// indistinguishable from a window that has crashed.
+/// Discovery is 95 ms; a diagnosis is 3.7-5.4 s on a real machine, because it walks every
+/// plugin folder. Waiting for three of those before drawing anything is what made the
+/// window look stuck, so the list comes first and each row is diagnosed separately.
 #[tauri::command]
-async fn screen(kernel: tauri::State<'_, Kernel>) -> Result<Screen, String> {
+async fn list(kernel: tauri::State<'_, Kernel>) -> Result<Vec<InstallRow>, String> {
+    let started = std::time::Instant::now();
     let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
     let mut guard = kernel.0.lock().map_err(|_| "the kernel handle is poisoned")?;
     let bridge = match guard.as_mut() {
@@ -283,53 +287,53 @@ async fn screen(kernel: tauri::State<'_, Kernel>) -> Result<Screen, String> {
             guard.insert(started)
         }
     };
-
     let installs = bridge.discover().map_err(|error| error.to_string())?;
-    let mut rows = Vec::new();
-    for install in installs {
-        // The diagnosis is one call per installation; its findings count is what the first
-        // screen needs, and the full list comes from `diagnose`.
-        let findings = bridge.doctor(&install.install_id).map_err(|error| error.to_string())?;
-        let count = findings
-            .get("findings")
-            .and_then(|value| value.as_array())
-            .map(Vec::len)
-            .unwrap_or(0);
-        let repairable = findings
-            .get("findings")
-            .and_then(|value| value.as_array())
-            .map(|items| {
-                items
-                    .iter()
-                    .filter(|finding| finding.get("repair").is_some())
-                    .count()
-            })
-            .unwrap_or(0);
-        rows.push(InstallRow {
+    log_line(&format!("list: {} installs in {:?}", installs.len(), started.elapsed()));
+    Ok(installs
+        .into_iter()
+        .map(|install| InstallRow {
             id: install.install_id,
+            kind: install.kind.clone(),
             name: o824_present::form_name(&install.kind, locale),
             version: install.version,
-            findings: count,
-            repairable,
-        });
-    }
-
-    let described: Vec<Installation> = rows
-        .iter()
-        .map(|row| Installation {
-            kind: row.id.clone(),
-            version: row.version.clone(),
-            findings: row.findings,
-            repairable: row.repairable,
+            findings: 0,
+            repairable: 0,
         })
-        .collect();
-    let copy = first_use(&described, locale).copy().clone();
-    Ok(Screen {
+        .collect())
+}
+
+/// The sentence group for "still checking", so the window is never blank.
+#[tauri::command]
+fn checking(locale_tag: Option<String>) -> Screen {
+    let locale = Locale::from_system(
+        locale_tag
+            .as_deref()
+            .or(std::env::var("LANG").ok().as_deref()),
+    );
+    let copy = o824_present::checking_copy(locale);
+    Screen {
+        headline: copy.headline.clone(),
+        reason: copy.reason.clone(),
+        next_step: String::new(),
+        installations: Vec::new(),
+    }
+}
+
+/// The first screen once every row has been diagnosed.
+///
+/// The decision belongs here: which sentence the window leads with is the same rule whether
+/// the diagnoses arrived all at once or one by one.
+#[tauri::command]
+fn summarize(installs: Vec<o824_present::Installation>) -> Screen {
+    log_line(&format!("summarize: {} rows", installs.len()));
+    let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
+    let copy = o824_present::first_use(&installs, locale).copy().clone();
+    Screen {
         headline: copy.headline,
         reason: copy.reason,
         next_step: copy.next_step,
-        installations: rows,
-    })
+        installations: Vec::new(),
+    }
 }
 
 /// The findings for one installation, each as a sentence with a next step.
@@ -339,13 +343,18 @@ async fn diagnose(
     install_id: String,
 ) -> Result<Vec<FoundRow>, String> {
     let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
-    let mut guard = kernel.0.lock().map_err(|_| "the kernel handle is poisoned")?;
-    let Some(bridge) = guard.as_mut() else {
-        return Err("the kernel is not running".to_owned());
-    };
-    let envelope = bridge
-        .doctor(&install_id)
-        .map_err(|error| error.to_string())?;
+    // Its own kernel, so three diagnoses run at the same time instead of queueing behind
+    // one another: they are independent questions and each costs seconds.
+    let mut own = Bridge::start(&Options {
+        program: resolve_kernel(),
+        ..Options::default()
+    })
+    .map_err(|error| error.to_string())?;
+    let started = std::time::Instant::now();
+    let envelope = own.doctor(&install_id).map_err(|error| error.to_string())?;
+    log_line(&format!("diagnose {install_id}: {:?}", started.elapsed()));
+    let _ = own.close();
+    let _ = &kernel;
     let findings = envelope
         .get("findings")
         .and_then(|value| value.as_array())

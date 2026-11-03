@@ -9,4 +9,5 @@ description = "what the UI says: the three first-use screens, and every error's 
 
 [dependencies]
 o824-model.workspace = true
+serde.workspace = true
 serde_json.workspace = true

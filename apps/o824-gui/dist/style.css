@@ -78,6 +78,10 @@ main {
   width: 100%;
   margin: 0 auto;
   display: grid;
+  /* One explicit column that may shrink. A grid's implicit column is sized to
+     max-content, so without this a single wide row pushes the whole page wider than its
+     container — and the right-hand text disappears off the edge. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
 }
 
@@ -121,11 +125,15 @@ h1 {
 .list {
   display: grid;
   gap: 10px;
+  /* A grid item's automatic minimum is its content, which lets a long row push the whole
+     column wider than its container. Every level needs the floor removed. */
+  min-width: 0;
 }
 
 .row {
   display: flex;
   flex-wrap: wrap;
+  min-width: 0;
   justify-content: space-between;
   gap: 6px 16px;
   text-align: left;
@@ -146,6 +154,13 @@ h1 {
   color: var(--muted);
   text-align: right;
   margin-left: auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.row > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .card {

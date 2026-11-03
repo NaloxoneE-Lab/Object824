@@ -80,7 +80,7 @@ impl FirstUse {
 }
 
 /// One installation as the interface sees it.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Deserialize)]
 pub struct Installation {
     /// Which form it is: `desktop`, `web` or `tui`.
     pub kind: String,
@@ -144,6 +144,18 @@ fn broken_reason(install: &Installation, locale: Locale) -> String {
     template.replace("{cause}", &cause)
 }
 
+/// The sentence group for "still checking".
+///
+/// A window that shows an empty page while it works reads as a broken window; this is what
+/// it says instead, and it gives an expectation rather than a spinner with no words.
+pub fn checking_copy(locale: Locale) -> Copy {
+    Copy {
+        headline: text(locale, "first.checking.headline"),
+        reason: text(locale, "first.checking.reason"),
+        next_step: String::new(),
+    }
+}
+
 /// The user-facing name of a form.
 pub fn form_name(kind: &str, locale: Locale) -> String {
     match kind {
@@ -181,6 +193,9 @@ fn catalog() -> &'static [(&'static str, &'static str, &'static str)] {
         ("first.none.headline", "DeepSeek Harness is not installed yet", "还没装 DeepSeek Harness"),
         ("first.none.reason", "Nothing on this computer is set up to run it.", "这台电脑上还没有可以运行它的地方。"),
         ("first.none.next", "Install DeepSeek Harness", "安装 DeepSeek Harness"),
+        ("first.checking.headline", "Checking your installations", "正在检查安装"),
+        ("first.checking.reason", "This takes a few seconds: every plugin folder is read.", "需要几秒：每个插件目录都要读一遍。"),
+        ("first.checking.next", "", ""),
         ("first.ready.reason", "Ready to start.", "可以启动。"),
         ("first.ready.next", "Start it", "启动"),
         ("first.broken.headline", "DeepSeek Harness will not start", "DeepSeek Harness 起不来"),
@@ -331,11 +346,20 @@ mod tests {
     }
 
     /// §20.10: both languages carry every key.
+    ///
+    /// One exemption, named here rather than hidden in the data: a state that is not an
+    /// error has no next step. "Checking your installations" is something the window says
+    /// while it works; inventing a button for it would be worse than an empty field.
+    const ACTIONLESS: [&str; 1] = ["first.checking.next"];
+
     #[test]
     fn every_key_exists_in_both_languages() {
         for (key, _, _) in catalog() {
             let en = text(Locale::En, key);
             let zh = text(Locale::ZhHans, key);
+            if ACTIONLESS.contains(&key) {
+                continue;
+            }
             assert!(!en.trim().is_empty(), "{key}: empty English");
             assert!(!zh.trim().is_empty(), "{key}: empty Chinese");
         }
