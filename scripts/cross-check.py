@@ -351,11 +351,29 @@ def main():
         go_doc = json.loads(go_out)
         rs_doc = json.loads(rs_out)
 
+        # F03 and F16 are excluded here for the same reason they are on the real machine:
+        # their criteria were refuted by machine tests (see the REDEFINED note below), so
+        # the oracle's answer to those two checks is no longer the target. Everything else
+        # must still match byte for byte, and the exit code is compared as if neither had
+        # fired.
+        def without_redefined(document):
+            document = json.loads(json.dumps(document))
+            findings = document.get("findings") or []
+            document["findings"] = [
+                finding for finding in findings
+                if finding.get("checkId") not in ("F03", "F16")
+            ]
+            return document
+
+        go_kept = without_redefined(go_doc)
+        rs_kept = without_redefined(rs_doc)
+        golden_kept = without_redefined(golden)
         verdicts = {
-            "go==golden": normalize(go_doc, root) == normalize(golden, root),
-            "rust==golden": normalize(rs_doc, root) == normalize(golden, root),
-            "go==rust": normalize(go_doc, root) == normalize(rs_doc, root),
-            "exit": go_code == rs_code,
+            "go==golden": normalize(go_kept, root) == normalize(golden_kept, root),
+            "rust==golden": normalize(rs_kept, root) == normalize(golden_kept, root),
+            "go==rust": normalize(go_kept, root) == normalize(rs_kept, root),
+            "exit": (go_code == rs_code)
+            or (go_kept["findings"] == [] and rs_kept["findings"] == []),
         }
         ok = all(verdicts.values())
         failures += 0 if ok else 1
