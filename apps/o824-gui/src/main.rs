@@ -324,8 +324,14 @@ fn checking(locale_tag: Option<String>) -> Screen {
 /// The decision belongs here: which sentence the window leads with is the same rule whether
 /// the diagnoses arrived all at once or one by one.
 #[tauri::command]
-fn summarize(installs: Vec<o824_present::Installation>) -> Screen {
+fn summarize(
+    installs: Vec<o824_present::Installation>,
+    layout: Option<serde_json::Value>,
+) -> Screen {
     log_line(&format!("summarize: {} rows", installs.len()));
+    if let Some(layout) = layout {
+        log_line(&format!("layout: {layout}"));
+    }
     let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
     let copy = o824_present::first_use(&installs, locale).copy().clone();
     Screen {

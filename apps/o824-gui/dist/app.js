@@ -41,6 +41,28 @@ function setHeadline(copy) {
   }
 }
 
+/// The geometry, so a layout problem is measured instead of guessed from a screenshot.
+function layoutMeasurements() {
+  const main = document.querySelector("main");
+  const row = document.querySelector(".row");
+  const detail = document.querySelector('[data-role="detail"]');
+  const rect = (node) => {
+    if (!node) return null;
+    const r = node.getBoundingClientRect();
+    return { left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width) };
+  };
+  return {
+    viewport: { width: window.innerWidth, height: window.innerHeight },
+    document: {
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    },
+    main: rect(main),
+    row: rect(row),
+    detail: rect(detail),
+  };
+}
+
 function drawRows(rows) {
   elements.installations.hidden = rows.length === 0;
   elements.installations.replaceChildren(
@@ -146,6 +168,7 @@ async function start() {
   try {
     setHeadline(
       await invoke("summarize", {
+        layout: layoutMeasurements(),
         installs: rows.map((row) => ({
           kind: row.kind,
           version: row.version,
@@ -176,7 +199,9 @@ async function diagnoseRow(install) {
     };
     if (detail()) detail().textContent = detailFor(result);
     elements.status.textContent = "";
-    setHeadline(await invoke("summarize", { installs: [result] }));
+    setHeadline(
+      await invoke("summarize", { layout: layoutMeasurements(), installs: [result] }),
+    );
     await showFindings(install.id, { quiet: true });
   } catch (error) {
     if (detail()) detail().textContent = "could not be checked";

@@ -130,12 +130,13 @@ h1 {
   min-width: 0;
 }
 
+/* Two lines rather than one: a name on the left and a status on the right needs the
+   status to fit beside the name, and when it does not, it is pushed off the edge. Stacked,
+   there is no horizontal pressure at all, at any window width. */
 .row {
-  display: flex;
-  flex-wrap: wrap;
-  min-width: 0;
-  justify-content: space-between;
-  gap: 6px 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
   text-align: left;
   font: inherit;
   color: inherit;
@@ -152,8 +153,8 @@ h1 {
 
 .detail {
   color: var(--muted);
-  text-align: right;
-  margin-left: auto;
+  font-size: 13px;
+  text-align: left;
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -161,6 +162,7 @@ h1 {
 .row > span:first-child {
   min-width: 0;
   overflow-wrap: anywhere;
+  font-weight: 500;
 }
 
 .card {
