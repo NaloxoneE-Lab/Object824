@@ -550,6 +550,35 @@ fn default_home() -> std::path::PathBuf {
     o824_discovery::resolve_home(None)
 }
 
+/// Stopping a process the kernel started must not require the installation to still
+/// exist: the record is the whole subject. This is the CI failure that taught it — the
+/// apply path took a snapshot of a root that was not there and refused, with exit 2,
+/// before the identity check could say what it actually thought.
+#[test]
+fn a_stop_works_when_the_installation_is_gone() {
+    let temp = o824_fixtures::TempDir::new("o824-stop-noinstall-").expect("temp dir");
+    let mut stand_in = spawn_stand_in();
+    let image = image_of_stand_in(&mut stand_in);
+
+    let mut record = record_for("web", stand_in.id(), &image, "D:\\home-that-does-not-exist");
+    record.port = None;
+    state_at(temp.path(), Some(record));
+
+    let root = temp.path().display().to_string();
+    let home = temp.path().join("home").display().to_string();
+    let (code, stdout, stderr) = run(
+        crate::process_cmd::stop,
+        &["--install", "web", "--home", &home, "--data-root", &root],
+    );
+
+    let alive = stand_in.try_wait().expect("try_wait").is_none();
+    let _ = stand_in.kill();
+    let _ = stand_in.wait();
+
+    assert_eq!(code, 0, "{stderr}");
+    assert!(!alive, "the recorded process was stopped: {stdout}");
+}
+
 /// The image of the spawned stand-in, read after it is surely running.
 fn image_of_stand_in(child: &mut std::process::Child) -> String {
     for _ in 0..50 {

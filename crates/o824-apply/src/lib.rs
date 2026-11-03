@@ -81,8 +81,24 @@ pub fn run(data_root: &Path, plan: &mut Plan, root: &Path) -> Result<(), Error> 
         return Err(error);
     }
 
-    // 4. The first rollback checkpoint. A snapshot that did not reach disk aborts
-    // the run before any mutation.
+    // 4. Only a plan that rewrites files needs a checkpoint. A start rewrites nothing
+    // and a stop rewrites nothing, and the record is the whole subject of those steps —
+    // stopping a process the kernel started is exactly the case where the installation
+    // may be gone. Snapshotting it would fail on a machine that has no installation,
+    // which says nothing about whether the process can be stopped.
+    if !plan.steps.iter().any(|step| !is_process_step(&step.kind)) {
+        for step in plan.steps.iter_mut() {
+            if let Err(error) = execute(data_root, &plan.install_id, root, step) {
+                let _ = handle.release();
+                return Err(error);
+            }
+        }
+        let _ = handle.release();
+        return Ok(());
+    }
+
+    // 5. The first rollback checkpoint. A snapshot that did not reach disk aborts the
+    // run before any mutation.
     let snapshot = match o824_snapshot::create(data_root, &plan.install_id, root) {
         Ok(snapshot) => snapshot,
         Err(error) => {
