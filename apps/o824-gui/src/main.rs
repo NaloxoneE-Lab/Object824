@@ -306,7 +306,12 @@ fn main() {
                 builder = builder.data_directory(directory);
             }
             builder.build()?;
-            build_tray(app)?;
+            // The tray is built on a best-effort basis and is **not** load-bearing: on this
+            // machine Windows reports the icon created and then shows nothing, so the window
+            // must not hide into a tray that is not there. Closing still quits.
+            if let Err(error) = build_tray(app) {
+                log_line(&format!("tray: not created: {error}"));
+            }
             Ok(())
         })
         .manage(Kernel(Mutex::new(None)))
@@ -812,8 +817,16 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &updates, &quit])?;
 
+    let icon = app.default_window_icon().cloned();
+    log_line(&format!(
+        "tray: default_window_icon={}",
+        match &icon {
+            Some(image) => format!("{}x{}", image.width(), image.height()),
+            None => "none".to_owned(),
+        }
+    ));
     TrayIconBuilder::new()
-        .icon(app.default_window_icon().cloned().ok_or_else(|| {
+        .icon(icon.ok_or_else(|| {
             tauri::Error::AssetNotFound("the window icon is missing".to_owned())
         })?)
         .menu(&menu)
@@ -843,6 +856,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
             }
         })
         .build(app)?;
+    log_line("tray: created");
     Ok(())
 }
 
