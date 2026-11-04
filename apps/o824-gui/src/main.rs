@@ -297,6 +297,8 @@ fn main() {
                     _ => "1",
                 };
                 tauri::WebviewUrl::App(format!("index.html?autorepair={mode}").into())
+            } else if std::env::var_os("O824_GUI_TRUST").is_some() {
+                tauri::WebviewUrl::App("index.html?trust=1".into())
             } else if std::env::var_os("O824_GUI_EMPTY").is_some() {
                 let guide = if std::env::var_os("O824_GUI_GUIDE").is_some() { "&guide=1" } else { "" };
                 tauri::WebviewUrl::App(format!("index.html?empty=1{guide}").into())
@@ -332,7 +334,8 @@ fn main() {
             repair_apply,
             undo_repair,
             form_action,
-            install_help
+            install_help,
+            trust_help
         ])
         .build(tauri::generate_context!())
     });
@@ -490,6 +493,16 @@ fn checking(locale_tag: Option<String>) -> Screen {
         installations: Vec::new(),
         action: String::new(),
     }
+}
+
+/// Why Windows shows "unrecognised app", and how to check the download instead.
+///
+/// §13: the build is unsigned by decision, so the window says what that means and how to
+/// verify what you got — and never suggests turning a protection off.
+#[tauri::command]
+fn trust_help() -> o824_present::TrustHelp {
+    let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
+    o824_present::trust_help(locale)
 }
 
 /// What to do when nothing is installed.

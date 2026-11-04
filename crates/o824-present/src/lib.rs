@@ -131,6 +131,46 @@ pub fn open_label(locale: Locale) -> String {
     text(locale, "action.open")
 }
 
+/// The unsigned-distribution explanation, as the window shows it.
+///
+/// §13 decided on unsigned distribution and on saying so plainly: what the warning means,
+/// how to check the download yourself, and the one sentence that matters — this tool will
+/// never ask anyone to turn a protection off.
+pub fn trust_help(locale: Locale) -> TrustHelp {
+    TrustHelp {
+        why: text(locale, "trust.why"),
+        headline: text(locale, "trust.headline"),
+        reason: text(locale, "trust.reason"),
+        check: text(locale, "trust.check"),
+        command: text(locale, "trust.check.step"),
+        note: text(locale, "trust.check.note"),
+        never: text(locale, "trust.never"),
+        close: text(locale, "trust.close"),
+    }
+}
+
+/// What the window says when someone asks why Windows warns.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrustHelp {
+    /// The label of the thing that opens this.
+    pub why: String,
+    /// The headline.
+    pub headline: String,
+    /// What the warning is actually about.
+    pub reason: String,
+    /// The sentence before the command.
+    pub check: String,
+    /// The command itself.
+    pub command: String,
+    /// What the command does.
+    pub note: String,
+    /// The promise about never weakening protection.
+    pub never: String,
+    /// The button that closes it.
+    pub close: String,
+}
+
 /// The install guidance: what to do, and the commands, in the user's language.
 ///
 /// §20 and §750 are explicit that the launcher **guides** here. Running `npm i -g` on
@@ -333,6 +373,16 @@ fn catalog() -> &'static [(&'static str, &'static str, &'static str)] {
         ("first.none.headline", "DeepSeek Harness is not installed yet", "还没装 DeepSeek Harness"),
         ("first.none.reason", "Nothing on this computer is set up to run it.", "这台电脑上还没有可以运行它的地方。"),
         ("first.none.next", "Install DeepSeek Harness", "安装 DeepSeek Harness"),
+        // §13: unsigned distribution is a decision, so the window explains it instead of
+        // hiding it. The wording never suggests weakening a security control.
+        ("trust.why", "Why does Windows warn about this?", "为什么 Windows 会提示风险？"),
+        ("trust.headline", "This program is not code-signed", "这个程序没有数字签名"),
+        ("trust.reason", "It is an unofficial tool and no code-signing certificate was bought for it, so Windows SmartScreen shows \"unrecognised app\" the first time you run it. That warning is about identity, not about damage: it says Windows cannot tell who built this file.", "它是非官方工具，没有购买代码签名证书，所以第一次运行时 Windows SmartScreen 会显示\"无法识别的应用\"。这个提示说的是\"身份未知\"，不是\"文件有害\"——它只说明 Windows 无法确认这个文件是谁做的。"),
+        ("trust.check", "You can check what you downloaded instead:", "你可以自己核对下载到的东西："),
+        ("trust.check.step", "o824 verify-manifest --manifest manifest.json --root <the folder you extracted> --public-key <the key on the release page>", "o824 verify-manifest --manifest manifest.json --root <解压出来的目录> --public-key <发布页上的公钥>"),
+        ("trust.check.note", "It compares every file against a list the publisher signed. If one byte differs, it says which file.", "它会把每个文件和发布者签过名的清单逐个比对；有一个字节不同，它就会指出是哪个文件。"),
+        ("trust.never", "This tool will never ask you to turn off SmartScreen, Defender, or any other protection. If something tells you to, it is not us.", "这个工具永远不会要求你关闭 SmartScreen、Defender 或任何其他防护。如果有什么东西让你这么做，那不是我们。"),
+        ("trust.close", "Close", "关闭"),
         // §20's install rule: the launcher guides, it does not install on the user's behalf.
         ("install.guidance", "Installing is done in a browser or a terminal, not here. These are the official ways:", "安装要在浏览器或终端里完成，不在这里代跑。官方方式如下："),
         ("install.desktop", "Windows installer (no Node needed)", "Windows 安装包（不需要 Node）"),
@@ -564,6 +614,53 @@ mod tests {
 
         let unknown = describe("F99", true, Locale::En);
         assert_eq!(unknown.headline, text(Locale::En, "check.unknown.headline"));
+    }
+
+    /// §13: the explanation must never *instruct* the reader to weaken a security control,
+    /// in either language. The promise itself is allowed to name the action it refuses — that
+    /// is the line where "never turn it off" lives — so it is checked for the opposite.
+    #[test]
+    fn the_trust_help_never_asks_anyone_to_weaken_a_protection() {
+        let forbidden_en = ["disable", "turn off", "ignore", "bypass", "allow anyway"];
+        let forbidden_zh = ["关闭", "禁用", "忽略", "绕过"];
+        for locale in [Locale::En, Locale::ZhHans] {
+            let help = trust_help(locale);
+            // Everything that instructs the reader, excluding the promise and the button
+            // label: Chinese for "Close" is the same word as "turn off", and a button is not
+            // an instruction about protections.
+            let guidance = format!(
+                "{} {} {} {} {}",
+                help.headline, help.reason, help.check, help.command, help.note
+            )
+            .to_lowercase();
+            let forbidden: &[&str] = if locale == Locale::En {
+                &forbidden_en
+            } else {
+                &forbidden_zh
+            };
+            for word in forbidden {
+                assert!(
+                    !guidance.contains(word),
+                    "{locale:?}: the guidance says {word:?}, which asks the reader to weaken a protection: {guidance}"
+                );
+            }
+            // The promise must actually be a promise.
+            let promise = help.never.to_lowercase();
+            let asserts_never = if locale == Locale::En {
+                promise.contains("never")
+            } else {
+                promise.contains("永远") || promise.contains("不会")
+            };
+            assert!(
+                asserts_never,
+                "{locale:?}: the promise is not a promise: {promise}"
+            );
+            assert!(
+                help.command.contains("verify-manifest"),
+                "{locale:?}: the check is not the one we ship: {}",
+                help.command
+            );
+        }
     }
 
     /// §20: the empty state guides, and the guidance has to be usable — three ways in, each

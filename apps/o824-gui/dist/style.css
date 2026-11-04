@@ -197,6 +197,9 @@ h1 {
 
 /* The confirmation panel: quiet, clearly a stop before something happens. */
 .confirm {
+  /* A grid item's automatic minimum is its content; a long command inside would widen the
+     panel past its column and clip the text rather than wrap it. */
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 18px 20px;
@@ -244,4 +247,36 @@ h1 {
 
 .link:hover {
   text-decoration: underline;
+}
+
+/* The "why does Windows warn" affordance: present, quiet, never shouting. */
+.link-button {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 6px;
+  text-decoration: underline;
+}
+
+.command {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.05);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.never {
+  margin: 12px 0 0;
+  font-weight: 600;
 }

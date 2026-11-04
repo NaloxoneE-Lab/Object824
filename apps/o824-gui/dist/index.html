@@ -11,6 +11,7 @@
     <header class="bar">
       <span class="mark">824</span>
       <span class="trust" id="trust"></span>
+      <button id="trust-why" class="link-button"></button>
     </header>
 
     <main id="main">
@@ -32,6 +33,18 @@
 
       <!-- §20.3: the safety net is shown before anything moves, and the way out is a
            button, not a sentence. -->
+      <section id="trust-panel" class="confirm" hidden>
+        <p id="trust-headline" class="backup"></p>
+        <p id="trust-reason"></p>
+        <p id="trust-check" class="steps-heading"></p>
+        <code id="trust-command" class="command"></code>
+        <p id="trust-note" class="detail"></p>
+        <p id="trust-never" class="never"></p>
+        <div class="actions">
+          <button id="trust-close" class="quiet"></button>
+        </div>
+      </section>
+
       <section id="install-panel" class="confirm" hidden>
         <p id="install-guidance" class="backup"></p>
         <ul id="install-steps" class="steps"></ul>

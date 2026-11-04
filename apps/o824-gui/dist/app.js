@@ -33,6 +33,15 @@ const elements = {
   formStop: document.getElementById("form-stop"),
   formUndo: document.getElementById("form-undo"),
   formUrl: document.getElementById("form-url"),
+  trustWhy: document.getElementById("trust-why"),
+  trustPanel: document.getElementById("trust-panel"),
+  trustHeadline: document.getElementById("trust-headline"),
+  trustReason: document.getElementById("trust-reason"),
+  trustCheck: document.getElementById("trust-check"),
+  trustCommand: document.getElementById("trust-command"),
+  trustNote: document.getElementById("trust-note"),
+  trustNever: document.getElementById("trust-never"),
+  trustClose: document.getElementById("trust-close"),
   copy: document.getElementById("copy"),
   status: document.getElementById("status"),
 };
@@ -170,8 +179,38 @@ function showFailure(message) {
   elements.status.textContent = "the kernel did not answer";
 }
 
+/// The unsigned-distribution explanation, filled from the copy crate.
+async function showTrustHelp() {
+  try {
+    const help = await invoke("trust_help");
+    elements.trustWhy.textContent = help.why;
+    elements.trustHeadline.textContent = help.headline;
+    elements.trustReason.textContent = help.reason;
+    elements.trustCheck.textContent = help.check;
+    elements.trustCommand.textContent = help.command;
+    elements.trustNote.textContent = help.note;
+    elements.trustNever.textContent = help.never;
+    elements.trustClose.textContent = help.close;
+    elements.trustPanel.hidden = false;
+    elements.trustClose.focus();
+  } catch (error) {
+    showFailure(String(error));
+  }
+}
+
+elements.trustWhy?.addEventListener("click", () => void showTrustHelp());
+elements.trustClose?.addEventListener("click", () => {
+  elements.trustPanel.hidden = true;
+});
+
 async function start() {
   elements.trust.textContent = TRUST;
+  try {
+    const help = await invoke("trust_help");
+    elements.trustWhy.textContent = help.why;
+  } catch (error) {
+    /* the sentence is a convenience; the panel reports its own failure */
+  }
 
   // First what the window says while it works, then the list, then the diagnoses.
   try {
@@ -448,6 +487,10 @@ elements.copy?.addEventListener("click", async () => {
 const AUTO = new URLSearchParams(location.search).has("autorepair");
 
 start().then(async () => {
+  // `?trust=1` opens the unsigned-distribution explanation, same reason as `?guide=1`.
+  if (new URLSearchParams(location.search).has("trust")) {
+    await showTrustHelp();
+  }
   // `?guide=1` opens the install guidance so it can be seen without a hand on the mouse.
   if (new URLSearchParams(location.search).has("guide")) {
     await showInstallHelp();
