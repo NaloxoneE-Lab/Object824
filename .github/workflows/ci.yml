@@ -64,6 +64,14 @@ jobs:
             $failures = Select-String -Path test-output.txt -Pattern '^test .* FAILED$|^---- .* stdout ----$' |
               Select-Object -First 8
             foreach ($line in $failures) { Write-Output "::error::$($line.Line.Trim())" }
+            # A failure that matches no test name — a binary that could not run, a compile
+            # error, a doctest — used to leave nothing but "exit code 1". The tail of the
+            # output becomes an annotation so the reason is readable without a token.
+            if ($failures.Count -eq 0) {
+              foreach ($raw in ((Get-Content test-output.txt) | Select-Object -Last 40)) {
+                Write-Output "::error::$($raw.Trim())"
+              }
+            }
             # The panic's own message is the next line after 'panicked at'; without it
             # a red run names the test and says nothing about why.
             $lines = Get-Content test-output.txt

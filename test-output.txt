@@ -1,0 +1,757 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.90s
+     Running unittests src\main.rs (target\debug\deps\o824-397849c6481becb0.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\kernel_stdio.rs (target\debug\deps\kernel_stdio-43a47b88b3981cc1.exe)
+
+running 3 tests
+test a_kernel_without_stdio_says_what_it_needs ... ok
+test the_binary_serves_a_session_and_exits_when_the_client_closes_the_pipe ... ok
+test a_job_over_real_pipes_reports_its_result_and_terminates ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.92s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_apply-6f909b450f528c5d.exe)
+
+running 28 tests
+test allow_builds::tests::a_key_already_approved_is_left_alone ... ok
+test allow_builds::tests::a_missing_file_becomes_the_smallest_whitelist ... ok
+test allow_builds::tests::an_empty_allow_builds_becomes_a_mapping ... ok
+test allow_builds::tests::an_existing_mapping_only_gains_the_new_key ... ok
+test allow_builds::tests::a_missing_key_is_appended_as_a_map ... ok
+test allow_builds::tests::a_sequence_is_migrated_to_the_map_form ... ok
+test journal::tests::the_three_states_have_the_documented_spellings ... ok
+test allow_builds::tests::an_explicit_false_is_flipped ... ok
+test junction::tests::the_buffer_has_the_mount_point_layout ... ok
+test journal::tests::an_id_that_could_escape_the_journal_directory_is_refused ... ok
+test reinstall::tests::a_profile_without_node_modules_still_refuses_a_missing_app_root ... ok
+test reinstall::tests::a_profile_without_a_lockfile_is_not_frozen ... ok
+test allow_builds::tests::an_inline_sequence_is_migrated ... ok
+test journal::tests::a_journal_round_trips_with_its_documented_field_names ... ok
+test allow_builds::tests::the_edited_file_is_still_valid_yaml ... ok
+test reinstall::tests::the_install_argv_is_the_hosts_own_pnpm_as_node ... ok
+test reinstall::tests::the_output_tail_is_marked_when_truncated ... ok
+test junction::tests::a_junction_created_natively_resolves_to_its_target ... ok
+test reinstall::tests::a_swap_whose_new_tree_is_missing_puts_the_old_one_back ... ok
+test reinstall::tests::the_swap_replaces_the_tree_and_keeps_no_leftover ... ok
+test reinstall::tests::the_copy_skips_node_modules_and_dot_directories ... ok
+test tests::a_changed_file_is_state_drift_before_anything_is_written ... ok
+test tests::a_step_outside_the_root_is_refused ... ok
+test tests::a_successful_run_records_a_done_journal ... ok
+test tests::a_failed_step_rolls_the_tree_back_and_records_it ... ok
+test tests::an_allow_builds_repair_clears_the_finding ... ok
+test tests::a_rebuild_bridge_repair_installs_a_junction_and_clears_the_finding ... ok
+test tests::an_expired_plan_is_refused_before_anything_is_written ... ok
+
+test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_bridge-ff57bdb29b120b1c.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\kernel.rs (target\debug\deps\kernel-1da26cb73dcfc340.exe)
+
+running 10 tests
+test a_missing_kernel_is_reported_as_such ... ok
+test an_unknown_action_is_an_error_with_a_code ... ok
+test a_start_plan_arrives_with_its_step ... ok
+test an_unknown_install_id_is_an_error_with_a_code ... ok
+test a_doctor_job_returns_its_envelope ... ok
+test closing_the_pipe_ends_the_kernel ... ok
+test discover_returns_the_fixture_installation ... ok
+test the_handshake_names_the_protocol_and_its_capabilities ... ok
+test a_repair_plan_can_be_applied_and_leaves_nothing_behind ... ok
+test a_repair_that_rebuilt_a_link_is_undone_by_the_rollback ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.94s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_cli-34d3b9c5dc272804.exe)
+
+running 83 tests
+test discover::tests::an_empty_list_still_prints_the_header ... ok
+test discover::tests::the_table_pads_every_column_by_two_spaces ... ok
+test diagnose_cmd::tests::a_missing_out_is_a_usage_error ... ok
+test doctor::tests::an_explicit_root_and_an_id_combine ... ok
+test discover::tests::the_orphan_note_names_the_home_and_its_profiles ... ok
+test flags::tests::a_mistyped_flag_is_a_usage_error ... ok
+test doctor::tests::neither_flag_nor_root_is_a_usage_error ... ok
+test flags::tests::a_valued_flag_without_a_value_is_a_usage_error ... ok
+test flags::tests::both_flag_spellings_are_accepted ... ok
+test flags::tests::positional_arguments_are_kept ... ok
+test install::tests::a_missing_root_is_e_install_dir ... ok
+test install::tests::an_explicit_root_and_an_id_combine ... ok
+test install::tests::a_root_without_an_id_gets_a_stable_local_id ... ok
+test install::tests::neither_flag_is_a_usage_error ... ok
+test manifest_cmd_tests::a_bad_argument_is_a_usage_error ... ok
+test manifest_cmd_tests::a_changed_file_exits_with_state_drift ... ok
+test manifest_cmd_tests::a_missing_manifest_is_a_usage_error ... ok
+test manifest_cmd_tests::an_unsigned_manifest_is_not_reported_as_ok ... ok
+test manifest_cmd_tests::signing_then_verifying_a_release_succeeds ... ok
+test manifest_cmd_tests::the_help_text_names_all_three_commands ... ok
+test mock_cmd::tests::a_bad_delay_is_a_usage_error ... ok
+test mock_cmd::tests::a_missing_transcript_is_a_usage_error ... ok
+test mock_cmd::tests::an_unreadable_transcript_is_an_internal_error ... ok
+test mock_cmd::tests::the_help_lists_the_flags ... ok
+test process_cmd_tests::a_live_process_that_owns_its_port_is_not_a_leftover ... ok
+test discover::tests::no_orphan_note_when_an_installation_exists ... ok
+test process_cmd_tests::a_live_process_with_its_port_is_not_a_leftover ... ok
+test process_cmd_tests::a_record_with_the_right_image_but_a_wrong_creation_time_is_refused ... ok
+test install::tests::an_unknown_install_id_is_a_usage_error ... ok
+test doctor::tests::an_unknown_install_id_is_a_usage_error ... ok
+test process_cmd_tests::logs_prints_the_tail_of_the_recorded_file ... ok
+test process_cmd_tests::start_refuses_a_port_somebody_else_is_listening_on ... ok
+test process_cmd_tests::status_of_a_kernel_that_started_nothing_has_no_kernel_rows ... ok
+test diagnose_cmd::tests::a_bundle_is_written_and_reported ... ok
+test diagnose_cmd::tests::json_prints_the_manifest ... ok
+test process_cmd_tests::status_reports_a_port_left_held_after_the_process_is_gone ... ok
+test process_cmd_tests::a_running_desktop_instance_is_named_before_a_second_form_starts ... ok
+test process_cmd_tests::stop_of_an_already_dead_record_succeeds_and_cleans_up ... ok
+test process_cmd_tests::start_refuses_when_the_home_already_has_a_live_instance ... ok
+test process_cmd_tests::stop_of_something_never_started_says_so_and_changes_nothing ... ok
+test process_cmd_tests::the_desktop_warning_is_silent_for_a_different_home ... ok
+test process_cmd_tests::status_reports_a_desktop_instance_started_outside_the_kernel ... ok
+test process_cmd_tests::status_shows_the_url_of_a_running_instance ... ok
+test process_cmd_tests::stop_all_stops_what_was_started_and_forgets_what_is_gone ... ok
+test process_cmd_tests::the_process_commands_answer_help ... ok
+test process_cmd_tests::the_guard_reads_the_home_not_the_label ... ok
+test render::tests::a_clean_diagnosis_says_so ... ok
+test render::tests::repair_is_not_part_of_the_human_line ... ok
+test render::tests::a_finding_renders_in_contract_order ... ok
+test process_cmd_tests::a_stop_works_when_the_installation_is_gone ... ok
+test process_cmd_tests::stop_refuses_a_pid_that_is_no_longer_the_recorded_process ... ok
+test repair::tests::a_dry_run_on_the_git_dep_tree_prints_the_allow_builds_step ... ok
+test repair::tests::a_tree_with_no_automatic_repair_exits_one ... ok
+test repair::tests::a_dry_run_on_a_clean_tree_prints_a_plan_with_no_steps ... ok
+test snapshot_cmd::tests::an_unknown_subcommand_is_a_usage_error ... ok
+test repair::tests::applying_without_yes_is_refused_and_writes_nothing ... ok
+test rollback::tests::an_installation_without_a_snapshot_is_state_drift ... ok
+test tests::a_typo_d_root_is_e_install_dir ... ok
+test tests::doctor_without_a_root_is_a_usage_error ... ok
+test rollback::tests::neither_latest_nor_to_is_a_usage_error ... ok
+test tests::error_carries_its_code_into_the_exit_status ... ok
+test tests::the_doctor_help_is_success ... ok
+test tests::exit_code_map ... ok
+test tests::unknown_command_is_a_usage_error ... ok
+test tests::version_and_help_are_success ... ok
+test update_cmd_tests::a_build_without_a_key_trusts_nobody_but_itself ... ok
+test update_cmd_tests::a_manifest_signed_by_another_key_is_refused_before_versions_are_compared ... ok
+test update_cmd_tests::a_missing_manifest_cannot_be_read ... ok
+test update_cmd_tests::a_development_build_says_it_vouches_for_nothing ... ok
+test update_cmd_tests::an_empty_argument_falls_through_to_the_built_in_key ... ok
+test update_cmd_tests::an_explicit_key_wins_over_the_built_in_one ... ok
+test rollback::tests::a_snapshot_can_be_restored ... ok
+test update_cmd_tests::replacing_is_not_a_flag_that_exists ... ok
+test update_cmd_tests::an_older_release_is_not_an_update ... ok
+test update_cmd_tests::a_newer_signed_release_is_reported ... ok
+test update_cmd_tests::the_installed_directory_shows_which_files_differ ... ok
+test update_cmd_tests::the_same_version_is_not_newer ... ok
+test update_cmd_tests::without_an_argument_the_built_in_key_is_used ... ok
+test update_cmd_tests::the_json_form_carries_the_same_answers ... ok
+test repair::tests::applying_with_yes_repairs_the_tree ... ok
+test update_cmd_tests::without_a_trusted_key_the_check_says_what_it_proves ... ok
+test snapshot_cmd::tests::create_then_list_round_trips ... ok
+test snapshot_cmd::tests::if_changed_writes_once ... ok
+
+test result: ok. 83 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.93s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_conformance-5a4ffbb17ff9f9e7.exe)
+
+running 5 tests
+test tests::forbidden_edges_are_detected ... ok
+test tests::manifest_parser_reads_sections ... ok
+test tests::compare_is_silent_when_equal_and_specific_when_not ... ok
+test tests::normalize_replaces_both_path_spellings ... ok
+test tests::a_golden_file_is_only_rewritten_when_asked ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\dependencies.rs (target\debug\deps\dependencies-cd64e8c00335a5a7.exe)
+
+running 3 tests
+test no_forbidden_dependency_edge_exists ... ok
+test every_expected_crate_is_present ... ok
+test leaves_stay_at_the_bottom ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\doctor_golden.rs (target\debug\deps\doctor_golden-848c7feefb5feafe.exe)
+
+running 5 tests
+test the_normalizer_handles_the_root_the_harness_uses ... ok
+test the_ok_tree_reports_no_findings_at_all ... ok
+test the_exit_code_reports_whether_there_were_findings ... ok
+test every_doctor_golden_is_reproduced ... ok
+test two_fresh_trees_produce_the_same_document ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.30s
+
+     Running tests\fixtures.rs (target\debug\deps\fixtures-7ff6cd9f02c2c445.exe)
+
+running 4 tests
+test a_tree_that_is_not_an_install_is_reported_as_e_install_dir ... ok
+test the_electron_version_in_the_version_file_is_ignored ... ok
+test the_ok_tree_validates_as_healthy ... ok
+test all_eight_kinds_build_and_the_half_install_has_no_asar ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.83s
+
+     Running tests\golden.rs (target\debug\deps\golden-37b87a099346e557.exe)
+
+running 6 tests
+test assert_golden_panics_with_the_diff ... ok
+test the_golden_directory_holds_exactly_sixteen_contract_files ... ok
+test a_mutated_field_fails_with_a_diff ... ok
+test stub_replay_matches_every_golden ... ok
+test normalization_restores_concrete_values ... ok
+test all_sixteen_golden_files_exist_and_parse ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\model_roundtrip.rs (target\debug\deps\model_roundtrip-60f1bf8d024f1351.exe)
+
+running 3 tests
+test the_envelope_identifier_is_the_documented_one ... ok
+test a_finding_carries_its_optional_fields_in_contract_order ... ok
+test every_doctor_golden_round_trips_byte_for_byte ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\plan_golden.rs (target\debug\deps\plan_golden-e2eec48cdfe44bb7.exe)
+
+running 4 tests
+test plan_paths_are_root_anchored ... ok
+test every_plan_golden_is_reproduced ... ok
+test the_steps_are_the_ones_the_findings_rule ... ok
+test two_fresh_trees_produce_the_same_plan ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.56s
+
+     Running tests\transcripts.rs (target\debug\deps\transcripts-26063c7f6f3d6f00.exe)
+
+running 5 tests
+test the_transcript_directory_holds_three_recordings ... ok
+test the_mock_is_the_only_thing_the_test_needs ... ok
+test the_sequence_and_job_shapes_are_the_documented_ones ... ok
+test every_transcript_replays_frame_for_frame ... ok
+test a_transcript_can_replay_more_than_once ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_diagnose-614f305b3c7d49ea.exe)
+
+running 9 tests
+test tests::a_directory_as_out_is_refused ... ok
+test tests::the_redactor_handles_the_json_escaped_spelling ... ok
+test tests::the_redactor_knows_the_short_spelling_of_a_path ... ok
+test tests::the_redactor_prefers_the_longest_path ... ok
+test tests::the_doctor_entry_is_the_full_envelope ... ok
+test tests::no_installation_path_survives_in_a_redacted_bundle ... ok
+test tests::include_paths_keeps_the_real_root_and_says_so ... ok
+test tests::the_manifest_is_redacted_by_default ... ok
+test tests::the_bundle_has_the_documented_entries ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.39s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_discovery-b5d91496cbd46b7d.exe)
+
+running 33 tests
+test machine::tests::an_empty_explicit_root_set_scans_nothing ... ok
+test machine::tests::an_explicit_root_set_replaces_the_machine_scan ... ok
+test machine::tests::layer_timings ... ignored, diagnostic: prints per-layer timings
+test machine::tests::a_missing_extra_dir_is_reported_not_skipped ... ok
+test machine::tests::a_root_that_is_not_an_installation_is_reported_as_damaged ... ok
+test machine::tests::roots_are_cleaned_deduplicated_and_sorted ... ok
+test machine::tests::the_version_comes_from_the_display_name_suffix ... ok
+test scan::tests::a_custom_install_directory_is_found ... ok
+test scan::tests::a_directory_that_only_half_looks_like_an_install_is_not_reported ... ok
+test scan::tests::the_depth_limit_keeps_the_walk_shallow ... ok
+test scan::tests::the_walk_stops_at_the_entry_budget ... ok
+test shortcuts::tests::a_directory_without_shortcuts_contributes_nothing ... ok
+test machine::tests::a_running_host_process_contributes_its_directory ... ok
+test shortcuts::tests::the_prefilter_recognises_the_product_name_in_both_encodings ... ok
+test machine::tests::a_root_remembered_in_the_state_file_is_found_without_the_registry ... ok
+test machine::tests::the_earliest_layer_keeps_the_root_when_two_name_the_same_path ... ok
+test tests::a_profile_without_an_installation_is_orphaned ... ok
+test tests::a_web_package_directory_validates_as_the_web_form ... ok
+test tests::a_web_package_without_its_entry_point_is_not_healthy ... ok
+test tests::clean_path_drops_dot_and_parent_components ... ok
+test machine::tests::the_scan_is_skipped_once_an_earlier_layer_found_something ... ok
+test tests::missing_tree_is_an_install_dir_error ... ok
+test tests::a_desktop_root_is_not_mistaken_for_a_web_package ... ok
+test tests::truncated_asar_yields_no_version ... ok
+test shortcuts::tests::a_shortcut_pointing_at_a_root_is_followed ... ok
+test web::tests::a_global_prefix_with_the_package_is_a_web_root ... ok
+test web::tests::a_half_removed_package_does_not_count ... ok
+test web::tests::a_prefix_without_the_package_contributes_nothing ... ok
+test machine::tests::ids_are_numbered_in_sorted_path_order ... ok
+test tests::a_profile_next_to_an_installation_is_not_orphaned ... ok
+test tests::half_install_has_no_asar_and_is_rejected ... ok
+test tests::ok_fixture_validates_as_a_clean_install ... ok
+test tests::version_comes_from_the_asar_not_the_version_file ... ok
+
+test result: ok. 32 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.40s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_errs-778a00b02f9bfcb6.exe)
+
+running 5 tests
+test tests::code_strings_are_exact ... ok
+test tests::display_prefers_fallback_then_code ... ok
+test tests::params_are_carried_verbatim ... ok
+test tests::unknown_code_is_rejected ... ok
+test tests::code_round_trips_through_json ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_execx-492e409da55762ac.exe)
+
+running 7 tests
+test tests::a_missing_program_is_an_internal_error ... ok
+test tests::a_zero_exit_reports_no_error ... ok
+test tests::spaces_and_non_ascii_survive_the_runner ... ok
+test detached::tests::a_detached_child_starts_and_is_not_waited_for ... ok
+test tests::the_working_directory_is_honoured ... ok
+test tests::a_non_zero_exit_is_data_not_an_error ... ok
+test tests::stdout_and_stderr_stay_separate ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_fixtures-e1aa2cb9a79dbcf9.exe)
+
+running 8 tests
+test temp::tests::a_temp_dir_is_created_and_removed ... ok
+test temp::tests::two_temp_dirs_never_collide ... ok
+test tests::unknown_kind_is_rejected ... ok
+test tests::half_install_has_no_asar ... ok
+test tests::node_modules_entries_are_links_not_copies ... ok
+test tests::every_other_kind_has_an_asar ... ok
+test tests::every_kind_builds ... ok
+test tests::building_is_fast_enough_for_hundreds_of_tests ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.87s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_formproc-f7b8d60931168ca0.exe)
+
+running 14 tests
+test tests::a_record_without_its_process_is_never_matched ... ok
+test tests::noise_without_the_line_is_not_ready ... ok
+test tests::a_record_with_no_creation_time_proves_nothing ... ok
+test tests::the_port_comes_out_of_the_url ... ok
+test tests::the_readiness_line_is_the_one_dsh_prints ... ok
+test tests::the_desktop_form_refuses_a_missing_executable ... ok
+test tests::the_process_listening_on_a_port_is_named ... ok
+test tests::a_port_with_nothing_on_it_is_free ... ok
+test tests::the_wait_sees_a_line_that_appears_late ... ok
+test tests::waiting_for_a_release_sees_it_happen ... ok
+test tests::waiting_for_ready_gives_up_and_says_where_to_look ... ok
+test tests::waiting_for_a_release_that_never_comes_gives_up ... ok
+test tests::the_desktop_form_starts_a_stand_in_and_records_it ... ok
+test tests::the_real_web_form_starts_in_a_temporary_home ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.72s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_kernel-afcbf7ea932a0992.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\server.rs (target\debug\deps\server-b80316b31355cba1.exe)
+
+running 11 tests
+test a_client_from_another_major_version_is_refused_not_downgraded ... ok
+test an_unknown_method_is_answered_with_the_list_of_known_ones ... ok
+test a_body_that_is_not_json_is_answered_without_ending_the_session ... ok
+test cancelling_a_job_that_does_not_exist_says_so_and_cancels_nothing ... ok
+test a_plan_with_an_unknown_action_fails ... ok
+test info_reports_the_protocol_and_what_the_kernel_can_do ... ok
+test a_stop_plan_is_a_plan_with_a_stop_step ... ok
+test discover_lists_the_installation_it_was_pointed_at ... ok
+test cancelling_a_running_job_still_reaches_a_terminal_state ... ok
+test a_plan_is_a_job_with_steps_and_a_fingerprint ... ok
+test doctor_answers_the_same_envelope_as_the_golden_file ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.69s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_lock-186a832a0db68d77.exe)
+
+running 5 tests
+test tests::lock_holder_child ... ok
+test tests::the_lock_file_and_pid_sidecar_are_created ... ok
+test tests::releasing_twice_is_harmless ... ok
+test tests::a_released_lock_can_be_taken_again ... ok
+test tests::a_second_process_cannot_take_the_lock ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_manifest-e75d2f9c3206bb85.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\manifest.rs (target\debug\deps\manifest-f9c6eb4978dddf9e.exe)
+
+running 12 tests
+test a_file_that_is_not_a_manifest_is_refused ... ok
+test a_manifest_signed_by_another_key_is_refused ... ok
+test a_missing_file_is_named ... ok
+test a_changed_byte_is_reported_by_name ... ok
+test an_unsigned_manifest_says_so ... ok
+test a_symbolic_link_is_not_part_of_the_release ... ok
+test an_extra_file_is_named ... ok
+test a_manifest_on_disk_round_trips ... ok
+test the_signed_bytes_do_not_include_the_signature ... ok
+test the_manifest_skips_itself_and_is_stable_across_builds ... ok
+test a_signed_manifest_verifies_and_matches_its_files ... ok
+test editing_the_manifest_breaks_the_signature ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_mock-3f94fed8b38ee2e9.exe)
+
+running 10 tests
+test tests::a_notification_gets_no_answer ... ok
+test tests::a_non_json_body_is_a_protocol_parse_error ... ok
+test tests::a_malformed_line_names_its_number ... ok
+test tests::a_server_message_before_any_request_is_rejected ... ok
+test tests::a_protocol_override_rewrites_the_info_result ... ok
+test tests::a_repeated_method_keeps_replaying_its_last_answer ... ok
+test tests::an_unsupported_method_names_what_is_supported ... ok
+test tests::replay_answers_each_request_in_recorded_order ... ok
+test tests::the_three_line_classes_are_recognised ... ok
+test tests::fail_at_replaces_exactly_one_message ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\bin\o824-mock.rs (target\debug\deps\o824_mock-82f27b47ba0d4cb8.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\bin.rs (target\debug\deps\bin-e8f96e61f13c93f3.exe)
+
+running 4 tests
+test an_unreadable_transcript_exits_eight ... ok
+test a_usage_error_exits_two ... ok
+test a_line_longer_than_the_line_cap_is_reported_not_truncated ... ok
+test every_transcript_replays_frame_for_frame ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_model-1158e17daa355a2c.exe)
+
+running 14 tests
+test tests::category_and_severity_cover_nine_and_three_values ... ok
+test tests::finding_omits_empty_detail ... ok
+test tests::envelope_shape ... ok
+test tests::install_json_contract ... ok
+test tests::finding_json_contract ... ok
+test tests::new_envelope_normalises_nil ... ok
+test time::tests::a_leap_day_survives_the_round_trip ... ok
+test time::tests::a_timestamp_round_trips_through_json ... ok
+test time::tests::an_offset_is_normalised_to_utc ... ok
+test time::tests::fifteen_minutes_later_is_later ... ok
+test time::tests::nonsense_is_rejected ... ok
+test time::tests::ordering_is_by_instant_then_nanoseconds ... ok
+test time::tests::the_epoch_formats_and_parses ... ok
+test time::tests::the_fraction_is_trimmed_like_the_reference_implementation ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_plan-14764d698301a0b6.exe)
+
+running 12 tests
+test tests::a_blocked_build_gets_one_allow_builds_step_and_a_fingerprint ... ok
+test tests::a_clean_tree_has_no_steps ... ok
+test tests::a_link_to_a_non_package_gets_no_step ... ok
+test tests::a_step_outside_the_root_is_never_planned ... ok
+test tests::a_different_instant_produces_a_different_id ... ok
+test tests::a_duplicate_loader_entry_gets_no_step ... ok
+test tests::a_dangling_bridge_gets_one_rebuild_bridge_step ... ok
+test tests::a_missing_bundle_gets_no_step ... ok
+test tests::an_installation_without_an_id_is_refused ... ok
+test tests::a_parse_error_without_a_snapshot_gets_no_step ... ok
+test tests::an_interrupted_install_gets_no_step ... ok
+test tests::the_same_tree_at_the_same_instant_builds_the_same_plan ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.49s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_present-adfc4676278cedbb.exe)
+
+running 8 tests
+test tests::an_unsupported_language_falls_back_to_english ... ok
+test tests::a_button_says_what_it_does ... ok
+test tests::a_known_check_uses_its_own_headline ... ok
+test tests::every_check_has_a_next_step ... ok
+test tests::every_key_exists_in_both_languages ... ok
+test tests::the_three_first_use_paths_read_as_the_design_says ... ok
+test tests::no_catalog_string_contains_jargon ... ok
+test tests::the_install_guidance_names_the_official_ways ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_protocol-618cb49c3438fdaa.exe)
+
+running 9 tests
+test tests::a_negative_length_is_malformed ... ok
+test tests::a_missing_length_is_malformed ... ok
+test tests::a_frame_round_trips ... ok
+test tests::a_truncated_body_is_end_of_stream ... ok
+test tests::an_unknown_header_is_skipped ... ok
+test tests::an_clean_end_of_stream_is_reported_as_such ... ok
+test tests::the_header_name_is_case_insensitive ... ok
+test tests::the_length_header_is_the_byte_length ... ok
+test tests::the_sequence_counter_is_session_global ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_snapshot-f60270c80b0b716f.exe)
+
+running 12 tests
+test tests::a_missing_store_lists_nothing ... ok
+test tests::a_root_that_is_not_a_directory_is_usage ... ok
+test tests::a_snapshot_captures_the_ruled_files_only ... ok
+test tests::a_snapshot_round_trips_through_meta_json ... ok
+test tests::a_snapshot_lists_newest_first_and_survives_a_second_create ... ok
+test tests::a_restore_puts_the_bytes_back ... ok
+test tests::a_tampered_snapshot_is_state_drift ... ok
+test tests::an_id_that_could_escape_is_rejected ... ok
+test tests::a_restore_into_another_root_is_refused ... ok
+test tests::an_unfinished_snapshot_is_not_listed ... ok
+test tests::create_if_changed_does_not_write_twice ... ok
+test tests::retention_keeps_five_snapshots ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.52s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_state-5045b78a5d905a01.exe)
+
+running 11 tests
+test tests::a_missing_state_file_is_an_empty_state ... ok
+test tests::a_corrupt_state_file_is_state_drift ... ok
+test tests::an_explicit_root_wins ... ok
+test tests::a_null_process_map_reads_as_empty ... ok
+test tests::a_null_installs_map_reads_as_empty ... ok
+test tests::a_state_file_without_processes_reads_as_nothing_running ... ok
+test tests::the_default_is_under_local_app_data ... ok
+test tests::a_process_record_round_trips ... ok
+test tests::a_state_file_round_trips ... ok
+test tests::saving_leaves_no_temporary_file_behind ... ok
+test tests::saving_over_an_existing_file_replaces_it ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_verify-82906f6231d02645.exe)
+
+running 42 tests
+test journal::tests::a_missing_journal_directory_is_not_a_fault ... ok
+test loader::tests::a_missing_profile_directory_is_not_a_fault ... ok
+test loader::tests::the_loader_id_is_the_last_segment ... ok
+test journal::tests::non_json_files_are_ignored ... ok
+test pnpm::tests::a_bare_name_never_approves_a_source_dependency ... ok
+test journal::tests::a_journal_that_cannot_be_read_is_an_interrupted_install ... ok
+test pnpm::tests::a_github_shorthand_and_a_codeload_tarball_are_the_same_repository ... ok
+test journal::tests::terminal_states_are_healthy ... ok
+test pnpm::tests::a_space_in_the_path_is_written_percent_encoded ... ok
+test pnpm::tests::source_specs_are_recognised ... ok
+test pnpm::tests::the_repository_form_drops_the_fragment ... ok
+test journal::tests::the_half_install_fixture_is_reported ... ok
+test profile::tests::a_manifest_that_is_not_an_object_is_f16 ... ok
+test profile::tests::a_missing_profile_directory_is_not_a_fault ... ok
+test profile::tests::a_sequence_allow_builds_grants_nothing_but_is_not_corrupt ... ok
+test profile::tests::a_workspace_without_allow_builds_is_establishable ... ok
+test profile::tests::an_unparseable_workspace_is_not_establishable ... ok
+test profile::tests::explicit_false_withholds_an_approval ... ok
+test loader::tests::the_ok_fixture_has_no_collision ... ok
+test tests::a_form_with_no_version_does_not_participate ... ok
+test tests::findings_sort_by_check_id_then_path ... ok
+test tests::nt_namespace_prefixes_are_stripped ... ok
+test tests::one_form_is_not_a_drift ... ok
+test tests::params_are_stored_in_sorted_key_order ... ok
+test tests::relative_paths_use_the_root_as_prefix ... ok
+test pnpm::tests::the_ok_fixture_has_no_source_dependencies ... ok
+test tests::two_forms_at_different_versions_are_a_drift ... ok
+test tests::two_forms_at_the_same_version_are_not_a_drift ... ok
+test tui::tests::a_finished_exit_is_not_reported ... ok
+test tui::tests::a_missing_restart_log_is_silent ... ok
+test tui::tests::a_package_without_an_engines_field_is_not_judged ... ok
+test tui::tests::a_prerelease_sits_below_its_release ... ok
+test tui::tests::an_unfinished_exit_is_reported ... ok
+test tui::tests::an_unknown_operator_is_not_a_pass ... ok
+test tui::tests::only_the_environment_lines_of_the_third_party_doctor_are_taken ... ok
+test pnpm::tests::the_git_dep_fixture_is_reported_with_its_repository_key ... ok
+test tui::tests::the_node_range_check_reads_the_manifest_and_the_machine ... ok
+test tui::tests::the_tui_node_range_is_read_as_the_package_declares_it ... ok
+test profile::tests::a_clean_tree_has_no_parse_findings ... ok
+test loader::tests::the_dup_loader_fixture_reports_one_collision ... ok
+test profile::tests::the_parse_error_fixture_reports_line_one ... ok
+test tests::the_doctor_on_the_ok_tree_is_clean ... ok
+
+test result: ok. 42 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_version-33b3989b1eb1b08d.exe)
+
+running 3 tests
+test tests::string_has_no_empty_parenthetical ... ok
+test tests::string_has_the_version_and_platform ... ok
+test tests::version_text_falls_back_to_the_development_marker ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\o824_yaml-311af7eaa7cee5be.exe)
+
+running 8 tests
+test tests::nested_mappings_and_null_values_are_readable ... ok
+test tests::an_empty_stream_has_no_document ... ok
+test tests::a_tab_indented_document_is_rejected ... ok
+test tests::a_sequence_of_mappings_keeps_ids ... ok
+test tests::parse_error_lines_match_the_reference_implementation ... ok
+test tests::plain_scalars_resolve_to_their_implicit_tags ... ok
+test tests::a_repeated_key_is_kept_as_two_pairs ... ok
+test tests::the_broken_cordis_is_reported_at_the_contract_line ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_apply
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_bridge
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_cli
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_conformance
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_diagnose
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_discovery
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_errs
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_execx
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_fixtures
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_formproc
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_kernel
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_lock
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_manifest
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_mock
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_model
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_plan
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_present
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_protocol
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_snapshot
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_state
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_verify
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_version
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests o824_yaml
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
