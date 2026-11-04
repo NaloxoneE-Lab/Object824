@@ -33,6 +33,16 @@
 
       <!-- §20.3: the safety net is shown before anything moves, and the way out is a
            button, not a sentence. -->
+      <section id="update-panel" class="confirm" hidden>
+        <p id="update-headline" class="backup"></p>
+        <p id="update-detail"></p>
+        <p id="update-proof" class="detail"></p>
+        <div class="actions">
+          <button id="update-cancel" class="quiet"></button>
+          <button id="update-install" class="primary" hidden></button>
+        </div>
+      </section>
+
       <section id="trust-panel" class="confirm" hidden>
         <p id="trust-headline" class="backup"></p>
         <p id="trust-reason"></p>

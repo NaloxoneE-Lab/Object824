@@ -24,6 +24,7 @@
 
 use std::sync::Mutex;
 
+use tauri::Emitter;
 use tauri::Manager;
 
 
@@ -297,6 +298,8 @@ fn main() {
                     _ => "1",
                 };
                 tauri::WebviewUrl::App(format!("index.html?autorepair={mode}").into())
+            } else if std::env::var_os("O824_GUI_UPDATE").is_some() {
+                tauri::WebviewUrl::App("index.html?update=1".into())
             } else if std::env::var_os("O824_GUI_TRUST").is_some() {
                 tauri::WebviewUrl::App("index.html?trust=1".into())
             } else if std::env::var_os("O824_GUI_EMPTY").is_some() {
@@ -335,7 +338,10 @@ fn main() {
             undo_repair,
             form_action,
             install_help,
-            trust_help
+            trust_help,
+            update_check,
+            update_apply,
+            quit_now
         ])
         .build(tauri::generate_context!())
     });
@@ -493,6 +499,125 @@ fn checking(locale_tag: Option<String>) -> Screen {
         installations: Vec::new(),
         action: String::new(),
     }
+}
+
+/// Where a release is published. The release page must attach `manifest.json` beside the
+/// executables for the "latest" alias to resolve; `O824_UPDATE_URL` overrides it, which is how
+/// this is exercised against a local server.
+const UPDATE_BASE: &str = "https://github.com/Naloxone-E-Lab/Object824/releases/latest/download";
+
+fn update_base() -> String {
+    std::env::var("O824_UPDATE_URL").unwrap_or_else(|_| UPDATE_BASE.to_owned())
+}
+
+/// Runs the kernel with the given arguments, and returns its output and exit code.
+///
+/// The window does not re-implement verification: `o824 update` already refuses anything whose
+/// signature or hashes do not match, and a second implementation here would be a second thing
+/// to get wrong.
+fn run_kernel(args: &[&str]) -> Result<(i32, String, String), String> {
+    let program = resolve_kernel().ok_or_else(|| "the kernel was not found next to the window".to_owned())?;
+    let output = std::process::Command::new(&program)
+        .args(args)
+        .output()
+        .map_err(|error| format!("cannot run {:?}: {error}", program.display().to_string()))?;
+    Ok((
+        output.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        String::from_utf8_lossy(&output.stderr).to_string(),
+    ))
+}
+
+/// What a check found.
+#[derive(Serialize)]
+struct UpdateView {
+    /// True when the kernel verified a staged release.
+    staged: bool,
+    /// The version it describes.
+    published: String,
+    /// The version running now.
+    current: String,
+    /// How many files the release contains.
+    files: usize,
+    /// The key that signed it, as a short id.
+    key_id: String,
+    /// A sentence for the window.
+    message: String,
+    /// Where the verified files are, hidden from the person but used by apply.
+    staged_dir: String,
+}
+
+/// Downloads a release into a staging folder and verifies it. Changes nothing installed.
+#[tauri::command]
+async fn update_check() -> Result<UpdateView, String> {
+    let base = update_base();
+    let staged = o824_install::default_directory().join("staged");
+    let staged_text = staged.display().to_string();
+    let _ = std::fs::remove_dir_all(&staged);
+    log_line(&format!("update: fetching {base} into {staged_text}"));
+
+    let (code, stdout, stderr) = run_kernel(&[
+        "update",
+        "--fetch",
+        "--manifest-url",
+        &format!("{base}/manifest.json"),
+        "--base-url",
+        &base,
+        "--into",
+        &staged_text,
+    ])?;
+    log_line(&format!("update: kernel exited {code}"));
+
+    if code != 0 {
+        return Err(if stderr.trim().is_empty() { stdout } else { stderr });
+    }
+
+    // Read back what the manifest said, so the window can show the evidence it is acting on.
+    let manifest = o824_manifest::load(&staged.join("manifest.json"))
+        .map_err(|error| format!("the verified manifest could not be read: {error}"))?;
+    Ok(UpdateView {
+        staged: true,
+        published: manifest.version.clone(),
+        current: o824_version::VERSION.to_owned(),
+        files: manifest.files.len(),
+        key_id: manifest
+            .signature
+            .as_ref()
+            .map(|signature| signature.key_id.clone())
+            .unwrap_or_default(),
+        message: stdout.trim().to_owned(),
+        staged_dir: staged_text,
+    })
+}
+
+/// Ends this process so the freshly installed one can own the single window.
+///
+/// After a swap the installed executable is a different file, and the running process is the
+/// old one; leaving it alive would also leave the single-instance guard holding the title.
+#[tauri::command]
+fn quit_now(app: tauri::AppHandle) {
+    log_line("update: closing so the new build can start");
+    app.exit(0);
+}
+
+/// Applies the staged release and lets the kernel restart the window.
+#[tauri::command]
+async fn update_apply(staged_dir: String) -> Result<String, String> {
+    let target = o824_install::default_directory().display().to_string();
+    let (code, stdout, stderr) = run_kernel(&[
+        "update",
+        "--apply",
+        "--staged",
+        &staged_dir,
+        "--target",
+        &target,
+        "--yes",
+    ])?;
+    if code != 0 {
+        return Err(if stderr.trim().is_empty() { stdout } else { stderr });
+    }
+    log_line("update: swap scheduled");
+    Ok(stdout.trim().to_owned())
 }
 
 /// Why Windows shows "unrecognised app", and how to check the download instead.
@@ -865,7 +990,15 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         .tooltip("O824")
         .on_menu_event(|app, event| match event.id.as_ref() {
             "quit" => app.exit(0),
-            "updates" => open_url("https://github.com/Naloxone-E-Lab/Object824/releases"),
+            "updates" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                    // The window runs the check: it can show what was verified before anyone
+                    // is asked to install anything.
+                    let _ = window.emit("update-requested", ());
+                }
+            }
             "show" => {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
@@ -892,33 +1025,6 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Opens a URL in the user's browser.
-#[allow(unsafe_code)]
-#[cfg(windows)]
-fn open_url(url: &str) {
-    use windows::core::{HSTRING, PCWSTR};
-    use windows::Win32::UI::Shell::ShellExecuteW;
-    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
-
-    let verb = HSTRING::from("open");
-    let target = HSTRING::from(url);
-    // SAFETY: four owned strings and a window handle of 0; nothing outlives the call.
-    unsafe {
-        ShellExecuteW(
-            None,
-            &verb,
-            &target,
-            PCWSTR::null(),
-            PCWSTR::null(),
-            SW_SHOWNORMAL,
-        );
-    }
-}
-
-#[cfg(not(windows))]
-fn open_url(url: &str) {
-    let _ = url;
-}
 
 /// Where the kernel should look, when this window is being exercised against a fixture.
 ///

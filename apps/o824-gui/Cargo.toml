@@ -14,6 +14,9 @@ tauri-build = { version = "2", features = [] }
 o824-bridge = { path = "../../crates/o824-bridge" }
 o824-present = { path = "../../crates/o824-present" }
 o824-model = { path = "../../crates/o824-model" }
+o824-install = { path = "../../crates/o824-install" }
+o824-manifest = { path = "../../crates/o824-manifest" }
+o824-version = { path = "../../crates/o824-version" }
 o824-formproc = { path = "../../crates/o824-formproc" }
 o824-state = { path = "../../crates/o824-state" }
 serde = { version = "1", features = ["derive"] }

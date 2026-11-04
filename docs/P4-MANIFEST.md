@@ -221,6 +221,31 @@ update: the downloaded files do not match the manifest                      ← 
 2. **必须从安装位置运行**：从工作区跑（Low IL）下载同样失败——和托盘是同一条规则。帮助文本里
    写明了这一点。
 
+
+## 界面里的更新流程
+
+托盘的「Check for updates…」不再打开浏览器，而是让窗口自己跑完整条链：
+
+1. **检查**：窗口调用内核 `update --fetch`，把发布下载到 `%LOCALAPPDATA%\o824\staged` 并逐字节校验；
+2. **显示证据**：面板写明「版本 A 可用 / 正在运行 B / 该发布有 N 个文件 /
+   签名已用密钥 <keyId> 验证 / **尚未安装任何东西**」；
+3. **安装**：只有按下 `Install <版本>` 才会调用 `update --apply --yes`；内核负责备份与失败回退，
+   完成后窗口调用 `quit_now` 退出，让新装的程序接管那个唯一的窗口。
+
+窗口**没有**重新实现校验：它调用的内核已经会拒绝签名或哈希不符的发布，再写一遍只会多一处出错的地方。
+
+实测（2026-11-05，本地起发布服务，`O824_UPDATE_URL` 指向它）：
+
+```
+update: fetching http://127.0.0.1:8765 into ...\o824\staged
+update: kernel exited 0
+```
+
+界面（截图见提交）：`Version 9.9.9 is available / Running 0.1.0-dev. The release has 2 files. /
+Signature verified with key 5c3345b3e56301d3. Nothing has been installed.` + `[Not now] [Install 9.9.9]`。
+
+发布地址默认是 GitHub 的 `releases/latest/download`，`O824_UPDATE_URL` 可覆盖——那正是验证时用的。
+
 ## 还没做的（P4 其余部分）
 
 - 安装器；自更新的"检查—下载—校验—替换"；崩溃恢复。

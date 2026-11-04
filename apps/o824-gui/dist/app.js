@@ -42,6 +42,12 @@ const elements = {
   trustNote: document.getElementById("trust-note"),
   trustNever: document.getElementById("trust-never"),
   trustClose: document.getElementById("trust-close"),
+  updatePanel: document.getElementById("update-panel"),
+  updateHeadline: document.getElementById("update-headline"),
+  updateDetail: document.getElementById("update-detail"),
+  updateProof: document.getElementById("update-proof"),
+  updateInstall: document.getElementById("update-install"),
+  updateCancel: document.getElementById("update-cancel"),
   copy: document.getElementById("copy"),
   status: document.getElementById("status"),
 };
@@ -177,6 +183,69 @@ function showFailure(message) {
   elements.failure.hidden = false;
   elements.failure.textContent = `${message} — you can still run "o824 doctor" from a terminal.`;
   elements.status.textContent = "the kernel did not answer";
+}
+
+/// Where the staged release lives once it has been verified.
+let stagedUpdate = null;
+
+/// Checks for a release: the kernel downloads it and verifies every byte, the window shows
+/// what was proven before anyone is asked to install anything.
+async function runUpdateCheck() {
+  elements.updatePanel.hidden = false;
+  elements.updateHeadline.textContent = "Checking for an update…";
+  elements.updateDetail.textContent = "The kernel downloads the release and verifies its signature and hashes.";
+  elements.updateProof.textContent = "";
+  elements.updateInstall.hidden = true;
+  elements.updateCancel.textContent = "Close";
+  try {
+    const result = await invoke("update_check");
+    stagedUpdate = result;
+    elements.updateHeadline.textContent = `Version ${result.published} is available`;
+    elements.updateDetail.textContent =
+      `Running ${result.current}. The release has ${result.files} files.`;
+    elements.updateProof.textContent =
+      `Signature verified with key ${result.key_id}. Nothing has been installed.`;
+    elements.updateInstall.textContent = `Install ${result.published}`;
+    elements.updateInstall.hidden = false;
+    elements.updateCancel.textContent = "Not now";
+  } catch (error) {
+    elements.updateHeadline.textContent = "No update was installed";
+    elements.updateDetail.textContent = String(error);
+    elements.updateProof.textContent =
+      "Nothing was changed. If you downloaded a release yourself, check it with verify-manifest.";
+    elements.updateInstall.hidden = true;
+    elements.updateCancel.textContent = "Close";
+  }
+}
+
+async function runUpdateApply() {
+  if (!stagedUpdate) return;
+  // §20.7: replacing the program is destructive, so the button asks once more.
+  elements.updateInstall.hidden = true;
+  elements.updateHeadline.textContent = "Installing…";
+  elements.updateDetail.textContent =
+    "The files are backed up beside themselves as .bak, and put back if anything fails.";
+  try {
+    await invoke("update_apply", { stagedDir: stagedUpdate.staged_dir });
+    elements.updateProof.textContent = "Installed. The window will restart in a moment.";
+    setTimeout(() => void invoke("quit_now"), 900);
+  } catch (error) {
+    elements.updateHeadline.textContent = "The update did not finish";
+    elements.updateDetail.textContent = String(error);
+    elements.updateProof.textContent =
+      "Every replaced file was put back; the installed version is unchanged.";
+  }
+}
+
+elements.updateInstall?.addEventListener("click", () => void runUpdateApply());
+elements.updateCancel?.addEventListener("click", () => {
+  elements.updatePanel.hidden = true;
+});
+
+// The tray's "Check for updates" asks the window to run the check, so the evidence is shown
+// somewhere it can be read.
+if (window.__TAURI__?.event?.listen) {
+  window.__TAURI__.event.listen("update-requested", () => void runUpdateCheck());
 }
 
 /// The unsigned-distribution explanation, filled from the copy crate.
@@ -487,6 +556,10 @@ elements.copy?.addEventListener("click", async () => {
 const AUTO = new URLSearchParams(location.search).has("autorepair");
 
 start().then(async () => {
+  // `?update=1` runs the update check on start, so the panel can be seen without a tray click.
+  if (new URLSearchParams(location.search).has("update")) {
+    await runUpdateCheck();
+  }
   // `?trust=1` opens the unsigned-distribution explanation, same reason as `?guide=1`.
   if (new URLSearchParams(location.search).has("trust")) {
     await showTrustHelp();
