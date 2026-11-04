@@ -131,6 +131,33 @@ pub fn open_label(locale: Locale) -> String {
     text(locale, "action.open")
 }
 
+/// The install guidance: what to do, and the commands, in the user's language.
+///
+/// §20 and §750 are explicit that the launcher **guides** here. Running `npm i -g` on
+/// someone's machine is a change they did not ask this window for.
+pub fn install_guidance(locale: Locale) -> (String, Vec<(String, String)>) {
+    let steps = vec![
+        (
+            text(locale, "install.desktop"),
+            "https://github.com/deepseek-ai/DeepSeek-Harness/releases".to_owned(),
+        ),
+        (
+            text(locale, "install.web"),
+            "npm i -g @deepseek-ai/dsh".to_owned(),
+        ),
+        (
+            text(locale, "install.tui"),
+            "npm i -g @deepseek-harness-tui/dsh-tui".to_owned(),
+        ),
+    ];
+    (text(locale, "install.guidance"), steps)
+}
+
+/// The button that copies a command.
+pub fn copy_label(locale: Locale) -> String {
+    text(locale, "install.copy")
+}
+
 /// The button that starts the repair.
 pub fn confirm_copy(locale: Locale) -> String {
     text(locale, "repair.confirm")
@@ -292,6 +319,13 @@ fn catalog() -> &'static [(&'static str, &'static str, &'static str)] {
         ("first.none.headline", "DeepSeek Harness is not installed yet", "还没装 DeepSeek Harness"),
         ("first.none.reason", "Nothing on this computer is set up to run it.", "这台电脑上还没有可以运行它的地方。"),
         ("first.none.next", "Install DeepSeek Harness", "安装 DeepSeek Harness"),
+        // §20's install rule: the launcher guides, it does not install on the user's behalf.
+        ("install.guidance", "Installing is done in a browser or a terminal, not here. These are the official ways:", "安装要在浏览器或终端里完成，不在这里代跑。官方方式如下："),
+        ("install.desktop", "Windows installer (no Node needed)", "Windows 安装包（不需要 Node）"),
+        ("install.web", "Browser version, from npm", "浏览器版，用 npm 安装"),
+        ("install.tui", "Terminal client, from npm", "终端客户端，用 npm 安装"),
+        ("install.copy", "Copy this command", "复制这条命令"),
+        ("install.copied", "Copied.", "已复制。"),
         ("first.checking.headline", "Checking your installations", "正在检查安装"),
         ("first.checking.reason", "This takes a few seconds: every plugin folder is read.", "需要几秒：每个插件目录都要读一遍。"),
         ("first.checking.next", "", ""),

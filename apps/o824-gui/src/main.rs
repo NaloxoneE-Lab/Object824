@@ -240,7 +240,8 @@ fn main() {
             summarize,
             repair_plan,
             repair_apply,
-            form_action
+            form_action,
+            install_help
         ])
         .run(tauri::generate_context!())
     });
@@ -393,6 +394,44 @@ fn checking(locale_tag: Option<String>) -> Screen {
         installations: Vec::new(),
         action: String::new(),
     }
+}
+
+/// What to do when nothing is installed.
+///
+/// §20 is explicit that the launcher guides here rather than installing on the user's
+/// behalf, so this returns words and commands, never an action that changes the machine.
+#[tauri::command]
+fn install_help() -> InstallHelp {
+    let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
+    let (guidance, steps) = o824_present::install_guidance(locale);
+    InstallHelp {
+        guidance,
+        steps: steps
+            .into_iter()
+            .map(|(label, command)| InstallStep { label, command })
+            .collect(),
+        copy_label: o824_present::copy_label(locale),
+    }
+}
+
+/// One way to install, as the window shows it.
+#[derive(Serialize)]
+struct InstallStep {
+    /// Which form it installs.
+    label: String,
+    /// The command, or a link.
+    command: String,
+}
+
+/// The guidance and its commands.
+#[derive(Serialize)]
+struct InstallHelp {
+    /// The sentence above the list.
+    guidance: String,
+    /// The ways to install.
+    steps: Vec<InstallStep>,
+    /// What the copy button says.
+    copy_label: String,
 }
 
 /// Starts or stops the form an installation provides.

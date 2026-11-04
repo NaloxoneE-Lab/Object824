@@ -24,6 +24,9 @@ const elements = {
   backup: document.getElementById("backup"),
   steps: document.getElementById("steps"),
   stepsHeading: document.getElementById("steps-heading"),
+  installPanel: document.getElementById("install-panel"),
+  installGuidance: document.getElementById("install-guidance"),
+  installSteps: document.getElementById("install-steps"),
   confirmStart: document.getElementById("confirm-start"),
   confirmCancel: document.getElementById("confirm-cancel"),
   formButtons: document.getElementById("form-buttons"),
@@ -65,6 +68,28 @@ function layoutMeasurements() {
     row: rect(row),
     detail: rect(detail),
   };
+}
+
+/// §20: guidance, not an install performed behind the user's back.
+async function showInstallHelp() {
+  try {
+    const help = await invoke("install_help");
+    elements.installGuidance.textContent = help.guidance;
+    elements.installSteps.replaceChildren(
+      ...help.steps.map((step) => {
+        const item = document.createElement("li");
+        const name = document.createElement("span");
+        name.textContent = `${step.label}: `;
+        const code = document.createElement("code");
+        code.textContent = step.command;
+        item.append(name, code);
+        return item;
+      }),
+    );
+    elements.installPanel.hidden = false;
+  } catch (error) {
+    showFailure(String(error));
+  }
 }
 
 /// Offers the counterpart action: stopping what is running, and opening what has an address.
@@ -330,10 +355,7 @@ elements.primary?.addEventListener("click", () => {
       if (target) void askForPlan(target);
       break;
     case "install":
-      // The install path is not wired yet; saying so is better than a button that does
-      // nothing, and §20.2 asks for a next step rather than an excuse.
-      elements.status.textContent =
-        "installing from the window is not available yet — the command line can do it";
+      void showInstallHelp();
       break;
     case "choose":
       elements.installations.querySelector(".row")?.focus();
