@@ -9,7 +9,10 @@ use std::fs;
 use o824_manifest::{build, new_key, public_hex, save, sign};
 
 use super::update_cmd;
-use crate::{EXIT_FINDINGS, EXIT_OK, EXIT_PERMISSION, EXIT_STATE_DRIFT, EXIT_USAGE};
+use crate::{
+    EXIT_CONFIRMATION_REQUIRED, EXIT_FINDINGS, EXIT_OK, EXIT_PERMISSION, EXIT_STATE_DRIFT,
+    EXIT_USAGE,
+};
 
 struct Scratch(std::path::PathBuf);
 
@@ -323,4 +326,70 @@ fn fetching_without_the_urls_is_a_usage_error() {
     let (code, _, err) = run(&["--fetch", "--into", scratch.path().to_str().expect("path")]);
     assert_eq!(code, EXIT_USAGE, "{err}");
     assert!(err.contains("--manifest-url"), "{err}");
+}
+
+/// The swap is the moment a manifest stops being advice. Its plan must never write outside the
+/// installation, and must keep a backup name for every file it is about to replace.
+#[test]
+fn a_swap_plan_keeps_every_file_inside_the_installation() {
+    let scratch = Scratch::new("plan");
+    let staged = scratch.path().join("staged");
+    let target = scratch.path().join("installed");
+    fs::create_dir_all(&staged).expect("staged");
+
+    let mut manifest =
+        o824_manifest::build(&staged, "0.2.0", "2026-11-05T00:00:00Z").expect("build");
+    // A hostile entry sits next to two honest ones.
+    manifest.files.push(o824_manifest::Entry {
+        path: "../evil.dll".to_owned(),
+        sha256: "00".repeat(32),
+        size: 1,
+    });
+    manifest.files.push(o824_manifest::Entry {
+        path: "o824.exe".to_owned(),
+        sha256: "00".repeat(32),
+        size: 1,
+    });
+
+    let plan = super::update_cmd::swap_plan(&manifest, &staged, &target);
+    assert_eq!(plan.len(), 1, "only the honest entry survives: {plan:?}");
+    let step = &plan[0];
+    assert!(
+        step.to.starts_with(&target),
+        "{:?} escapes the installation",
+        step.to
+    );
+    assert_eq!(
+        step.backup.file_name().and_then(|name| name.to_str()),
+        Some("o824.exe.bak")
+    );
+    assert_eq!(step.from, staged.join("o824.exe"));
+}
+
+#[test]
+fn applying_without_yes_is_refused_before_anything_is_checked() {
+    let scratch = Scratch::new("apply-yes");
+    let (code, _, err) = run(&[
+        "--apply",
+        "--staged",
+        scratch.path().to_str().expect("path"),
+        "--target",
+        scratch.path().join("installed").to_str().expect("path"),
+    ]);
+    assert_eq!(code, EXIT_CONFIRMATION_REQUIRED, "{err}");
+    assert!(err.contains("--yes"), "{err}");
+}
+
+#[test]
+fn applying_a_folder_without_a_manifest_fails() {
+    let scratch = Scratch::new("apply-nomanifest");
+    let (code, _, err) = run(&[
+        "--apply",
+        "--yes",
+        "--staged",
+        scratch.path().to_str().expect("path"),
+        "--target",
+        scratch.path().join("installed").to_str().expect("path"),
+    ]);
+    assert_eq!(code, EXIT_PERMISSION, "{err}");
 }
