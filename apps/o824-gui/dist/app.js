@@ -1,581 +1,1010 @@
-// The window's whole job: ask the kernel, draw the answer.
+// The board's whole job: ask the kernel, draw the answer.
 //
-// Every sentence on screen comes from the Rust side (`o824-present`), which is where the
-// copy is tested for jargon and for having a next step. Nothing here decides what a
-// finding means, and nothing here talks to the kernel directly — it cannot, deliberately:
-// §7.5 gives the process handle to whoever spawns, and that is the Rust side.
+// The rule from P3 still holds — no sentence about a machine is written here. What changed
+// with the redesign is where those sentences sit: the stage shows one distribution at a
+// time, the yellow control carries the next step the kernel named, and everything that used
+// to be a list on the first screen is one click away in a sheet.
 //
-// The one thing this file does decide is *when*: the list is drawn as soon as discovery
-// answers (about a tenth of a second), and each row is diagnosed separately because a
-// diagnosis walks every plugin folder and takes seconds. Waiting for three of them behind a
-// blank page is what made the window look stuck.
+// The window's own furniture (rail, menu, settings) speaks from `o824-present`'s chrome
+// catalog, in the language Windows is set to. A hard-coded label here would be a bug even
+// when it is only one word.
 
-const invoke = window.__TAURI__.core.invoke;
+const invoke =
+  window.__TAURI__?.core?.invoke ??
+  (async () => {
+    throw new Error("This page runs inside O824.");
+  });
 
-const elements = {
-  trust: document.getElementById("trust"),
-  headline: document.getElementById("headline"),
-  reason: document.getElementById("reason"),
-  primary: document.getElementById("primary"),
-  installations: document.getElementById("installations"),
-  findings: document.getElementById("findings"),
-  failure: document.getElementById("failure"),
-  panel: document.getElementById("confirm-panel"),
-  backup: document.getElementById("backup"),
-  steps: document.getElementById("steps"),
-  stepsHeading: document.getElementById("steps-heading"),
-  installPanel: document.getElementById("install-panel"),
-  installGuidance: document.getElementById("install-guidance"),
-  installSteps: document.getElementById("install-steps"),
-  confirmStart: document.getElementById("confirm-start"),
-  confirmCancel: document.getElementById("confirm-cancel"),
-  formButtons: document.getElementById("form-buttons"),
-  formStop: document.getElementById("form-stop"),
-  formUndo: document.getElementById("form-undo"),
-  formUrl: document.getElementById("form-url"),
-  trustWhy: document.getElementById("trust-why"),
-  trustPanel: document.getElementById("trust-panel"),
-  trustHeadline: document.getElementById("trust-headline"),
-  trustReason: document.getElementById("trust-reason"),
-  trustCheck: document.getElementById("trust-check"),
-  trustCommand: document.getElementById("trust-command"),
-  trustNote: document.getElementById("trust-note"),
-  trustNever: document.getElementById("trust-never"),
-  trustClose: document.getElementById("trust-close"),
-  updatePanel: document.getElementById("update-panel"),
-  updateHeadline: document.getElementById("update-headline"),
-  updateDetail: document.getElementById("update-detail"),
-  updateProof: document.getElementById("update-proof"),
-  updateInstall: document.getElementById("update-install"),
-  updateCancel: document.getElementById("update-cancel"),
-  copy: document.getElementById("copy"),
-  status: document.getElementById("status"),
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+
+const ORDER = ["desktop", "web", "tui"];
+const ART = {
+  desktop: "assets/tab-desktop.png",
+  web: "assets/tab-web.png",
+  tui: "assets/tab-tui.png",
+};
+const SETTINGS_KEY = "o824.settings.v1";
+const REPO = "https://github.com/NaloxoneE-Lab/Object824";
+
+const state = {
+  chrome: null,
+  info: { version: "", tray: false, autostart: false, log_path: null },
+  trust: null,
+  labels: {},
+  installs: [],
+  byKind: { desktop: [], web: [], tui: [] },
+  kindState: { desktop: "absent", web: "absent", tui: "absent" },
+  kind: "desktop",
+  selectedId: null,
+  copy: { headline: "…", reason: "", next_step: "", action: "" },
+  findings: [],
+  diagnosedId: null,
+  lastRepair: null,
+  running: false,
+  url: null,
+  plan: null,
+  update: null,
+  busy: false,
+  sheet: null,
+  settings: { tray: true, autoupdate: false, afterStart: false, closeNotice: false },
 };
 
-// §20.6: the trust statement is fixed and always visible, and it says "unsigned" out loud.
-const TRUST = "Unofficial tool · unsigned · github.com/Naloxone-E-Lab/Object824";
+// ---------------------------------------------------------------- vocabulary
 
-// What each row says while its diagnosis is still running.
-const CHECKING = "checking…";
+const t = (key) => state.chrome?.[key] ?? "";
+const fill = (sentence, values) =>
+  sentence.replace(/\{(\w+)\}/g, (match, name) =>
+    Object.prototype.hasOwnProperty.call(values, name) ? String(values[name]) : match,
+  );
 
-function setHeadline(copy) {
-  elements.headline.textContent = copy.headline;
-  elements.reason.textContent = copy.reason;
-  setPrimary(copy);
+function formName(kind) {
+  const row = state.byKind[kind]?.[0];
+  return row?.name || t(`form_${kind}`) || kind;
 }
 
-/// The geometry, so a layout problem is measured instead of guessed from a screenshot.
-function layoutMeasurements() {
-  const main = document.querySelector("main");
-  const row = document.querySelector(".row");
-  const detail = document.querySelector('[data-role="detail"]');
-  const rect = (node) => {
-    if (!node) return null;
-    const r = node.getBoundingClientRect();
-    return { left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width) };
-  };
-  return {
-    viewport: { width: window.innerWidth, height: window.innerHeight },
-    document: {
-      clientWidth: document.documentElement.clientWidth,
-      scrollWidth: document.documentElement.scrollWidth,
-    },
-    main: rect(main),
-    row: rect(row),
-    detail: rect(detail),
-  };
+function kindName(kind) {
+  return t(`kind_${kind}`) || formName(kind);
 }
 
-/// §20: guidance, not an install performed behind the user's back.
-async function showInstallHelp() {
+function selectedInstall() {
+  const list = state.byKind[state.kind] || [];
+  return list.find((row) => row.id === state.selectedId) || list[0] || null;
+}
+
+// ------------------------------------------------------------------ settings
+
+function loadSettings() {
   try {
-    const help = await invoke("install_help");
-    elements.installGuidance.textContent = help.guidance;
-    elements.installSteps.replaceChildren(
-      ...help.steps.map((step) => {
-        const item = document.createElement("li");
-        const name = document.createElement("span");
-        name.textContent = `${step.label}: `;
-        const code = document.createElement("code");
-        code.textContent = step.command;
-        item.append(name, code);
-        return item;
-      }),
-    );
-    elements.installPanel.hidden = false;
-  } catch (error) {
-    showFailure(String(error));
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+    for (const key of ["tray", "autoupdate", "afterStart", "closeNotice"]) {
+      if (typeof saved[key] === "boolean") state.settings[key] = saved[key];
+    }
+  } catch {
+    /* a corrupt preference is a default preference */
   }
 }
 
-/// Offers the counterpart action: stopping what is running, and opening what has an address.
-async function showFormButtons() {
+function saveSettings() {
   try {
-    const labels = await invoke("form_action", { installId: "", action: "labels" });
-    elements.formStop.textContent = labels.stop_label;
-    elements.formUrl.textContent = labels.open_label;
-  } catch (error) {
-    /* labels are cosmetic; the actions themselves report their own errors */
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
+  } catch {
+    /* the window still works with defaults */
   }
-  elements.formButtons.hidden = false;
-  elements.formStop.hidden = false;
 }
 
-function drawRows(rows) {
-  elements.installations.hidden = rows.length === 0;
-  elements.installations.replaceChildren(
-    ...rows.map((install) => {
-      const row = document.createElement("button");
-      row.className = "row";
-      row.dataset.id = install.id;
+// --------------------------------------------------------------------- toast
 
-      const name = document.createElement("span");
-      name.textContent = `${install.name} ${install.version}`;
+let toastTimer = 0;
 
-      const detail = document.createElement("span");
-      detail.className = "detail";
-      detail.dataset.role = "detail";
-      detail.textContent = CHECKING;
+function toast(message, { error = false, timeout = 0 } = {}) {
+  if (!message) return;
+  const node = $("toast");
+  $("toast-text").textContent = message;
+  node.classList.toggle("error", error);
+  node.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    node.hidden = true;
+  }, timeout || (error ? 7000 : 3400));
+}
 
-      row.append(name, detail);
-      row.addEventListener("click", () => diagnoseRow(install));
-      return row;
+// -------------------------------------------------------------------- sheets
+
+function openSheet(id, focusId) {
+  closeMenu();
+  for (const sheet of document.querySelectorAll(".sheet")) {
+    sheet.hidden = sheet.id !== id;
+  }
+  $("overlay").hidden = false;
+  state.sheet = id;
+  const target = focusId ? $(focusId) : $(id)?.querySelector(".sheet-x");
+  setTimeout(() => target?.focus(), 30);
+}
+
+function closeSheet() {
+  $("overlay").hidden = true;
+  state.sheet = null;
+}
+
+// --------------------------------------------------------------------- chrome
+
+function applyChrome() {
+  const c = state.chrome;
+  const set = (id, text) => {
+    const node = $(id);
+    if (node) node.textContent = text;
+  };
+
+  set("update-label", c.update);
+  set("settings-title", c.settings);
+  set("nav-launcher", c.launcher_settings);
+  set("nav-about", c.about);
+  set("group-startup", c.startup);
+  set("set-autostart-title", c.autostart);
+  set("set-autostart-detail", c.autostart_detail);
+  set("group-update", c.update_section);
+  set("set-autoupdate-title", c.autoupdate);
+  set("set-autoupdate-detail", c.autoupdate_detail);
+  set("group-close", c.close_section);
+  set("set-tray-title", c.tray);
+  set("set-tray-detail", c.tray_detail);
+  set("tray-note", c.tray_unavailable);
+  set("about-version", `${c.version} ${state.info.version}`);
+  set("about-tagline", c.tagline);
+  set("about-repo", c.repo);
+  set("about-update", c.update);
+  set("about-trust", state.trust?.why || "");
+  set("about-copy", c.copy);
+  set("about-log", c.open_log);
+  set("details-title", c.details);
+  set("details-copy", c.copy);
+  set("details-close", c.close);
+  set("details-undo", state.labels.undo_label || c.details);
+  set("update-title", c.update_title);
+  set("update-cancel", c.update_later);
+  set("install-title", c.install);
+  set("install-close", c.close);
+  set("close-title", c.close_notice_title);
+  set("close-reason", c.close_notice_reason);
+  set("close-remember-label", c.close_remember);
+  set("close-keep", c.close_keep);
+  set("close-quit", c.close_quit);
+  set("installs-title", c.all_installs);
+  set("after-start-label", c.after_start);
+  set("detail-link", c.details);
+  set("menu-settings", c.launcher_settings);
+  set("menu-shortcut", c.shortcut);
+  set("menu-integrity", c.integrity);
+  set("menu-cache", c.cache);
+
+  for (const id of ["settings", "minimize", "close", "update", "all-installs"]) {
+    const label =
+      id === "settings"
+        ? c.settings
+        : id === "minimize"
+          ? c.minimize
+          : id === "close"
+            ? c.close
+            : id === "update"
+              ? c.update
+              : c.all_installs;
+    $(id)?.setAttribute("aria-label", label);
+  }
+  $("tabs").setAttribute("aria-label", c.distributions);
+  $("menu-toggle").setAttribute("aria-label", c.more);
+  for (const button of document.querySelectorAll(".sheet-x")) {
+    button.setAttribute("aria-label", c.close);
+  }
+  $("about-log").hidden = !state.info.log_path;
+}
+
+// ---------------------------------------------------------------------- rail
+
+function renderTabs() {
+  $("tabs").replaceChildren(
+    ...ORDER.map((kind) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "tab";
+      button.dataset.kind = kind;
+      button.dataset.state = state.kindState[kind];
+      button.title = formName(kind);
+      button.setAttribute("aria-label", formName(kind));
+
+      const image = document.createElement("img");
+      image.src = ART[kind];
+      image.alt = "";
+      const badge = document.createElement("span");
+      badge.className = `badge ${state.kindState[kind]}`;
+
+      button.append(image, badge);
+      button.addEventListener("click", () => void select(kind));
+      return button;
     }),
   );
+  paintTabs();
 }
 
-/// The detail line for a diagnosed row.
-function detailFor(row) {
-  if (row.findings === 0) return "no problems found";
-  const fixable = row.repairable > 0 ? `, ${row.repairable} fixable automatically` : "";
-  return `${row.findings} problem(s)${fixable}`;
-}
-
-async function showFindings(installId, options = {}) {
-  if (!options.quiet) elements.status.textContent = "reading the details…";
-  try {
-    const findings = await invoke("diagnose", { installId });
-    elements.findings.hidden = findings.length === 0;
-    elements.findings.replaceChildren(
-      ...findings.map((finding) => {
-        const card = document.createElement("article");
-        card.className = "card";
-        const title = document.createElement("h2");
-        title.textContent = finding.headline;
-        const reason = document.createElement("p");
-        reason.textContent = finding.reason;
-        const next = document.createElement("p");
-        next.className = "next";
-        next.textContent = finding.next_step;
-        card.append(title, reason, next);
-        return card;
-      }),
-    );
-    elements.status.textContent = "";
-  } catch (error) {
-    showFailure(String(error));
+function paintTabs() {
+  for (const button of $("tabs").querySelectorAll(".tab")) {
+    const kind = button.dataset.kind;
+    button.dataset.state = state.kindState[kind];
+    button.classList.toggle("is-active", kind === state.kind);
+    const badge = button.querySelector(".badge");
+    badge.className = `badge ${state.kindState[kind]}`;
   }
 }
 
-function showFailure(message) {
-  // §20.2 again: a failure with no next step is not finished. The command line still
-  // works, and that is the step.
-  elements.failure.hidden = false;
-  elements.failure.textContent = `${message} — you can still run "o824 doctor" from a terminal.`;
-  elements.status.textContent = "the kernel did not answer";
-}
+// -------------------------------------------------------------------- selection
 
-/// Where the staged release lives once it has been verified.
-let stagedUpdate = null;
+let selectToken = 0;
 
-/// Checks for a release: the kernel downloads it and verifies every byte, the window shows
-/// what was proven before anyone is asked to install anything.
-async function runUpdateCheck() {
-  elements.updatePanel.hidden = false;
-  elements.updateHeadline.textContent = "Checking for an update…";
-  elements.updateDetail.textContent = "The kernel downloads the release and verifies its signature and hashes.";
-  elements.updateProof.textContent = "";
-  elements.updateInstall.hidden = true;
-  elements.updateCancel.textContent = "Close";
-  try {
-    const result = await invoke("update_check");
-    stagedUpdate = result;
-    elements.updateHeadline.textContent = `Version ${result.published} is available`;
-    elements.updateDetail.textContent =
-      `Running ${result.current}. The release has ${result.files} files.`;
-    elements.updateProof.textContent =
-      `Signature verified with key ${result.key_id}. Nothing has been installed.`;
-    elements.updateInstall.textContent = `Install ${result.published}`;
-    elements.updateInstall.hidden = false;
-    elements.updateCancel.textContent = "Not now";
-  } catch (error) {
-    elements.updateHeadline.textContent = "No update was installed";
-    elements.updateDetail.textContent = String(error);
-    elements.updateProof.textContent =
-      "Nothing was changed. If you downloaded a release yourself, check it with verify-manifest.";
-    elements.updateInstall.hidden = true;
-    elements.updateCancel.textContent = "Close";
-  }
-}
+async function select(kind, { id = null } = {}) {
+  const token = ++selectToken;
+  state.kind = kind;
+  const list = state.byKind[kind] || [];
+  const install = (id && list.find((row) => row.id === id)) || list[0] || null;
+  state.selectedId = install?.id ?? null;
+  state.running = false;
+  state.url = null;
+  $("open-link").hidden = true;
+  paintTabs();
+  closeMenu();
 
-async function runUpdateApply() {
-  if (!stagedUpdate) return;
-  // §20.7: replacing the program is destructive, so the button asks once more.
-  elements.updateInstall.hidden = true;
-  elements.updateHeadline.textContent = "Installing…";
-  elements.updateDetail.textContent =
-    "The files are backed up beside themselves as .bak, and put back if anything fails.";
-  try {
-    await invoke("update_apply", { stagedDir: stagedUpdate.staged_dir });
-    elements.updateProof.textContent = "Installed. The window will restart in a moment.";
-    setTimeout(() => void invoke("quit_now"), 900);
-  } catch (error) {
-    elements.updateHeadline.textContent = "The update did not finish";
-    elements.updateDetail.textContent = String(error);
-    elements.updateProof.textContent =
-      "Every replaced file was put back; the installed version is unchanged.";
-  }
-}
-
-elements.updateInstall?.addEventListener("click", () => void runUpdateApply());
-elements.updateCancel?.addEventListener("click", () => {
-  elements.updatePanel.hidden = true;
-});
-
-// The tray's "Check for updates" asks the window to run the check, so the evidence is shown
-// somewhere it can be read.
-if (window.__TAURI__?.event?.listen) {
-  window.__TAURI__.event.listen("update-requested", () => void runUpdateCheck());
-}
-
-/// The unsigned-distribution explanation, filled from the copy crate.
-async function showTrustHelp() {
-  try {
-    const help = await invoke("trust_help");
-    elements.trustWhy.textContent = help.why;
-    elements.trustHeadline.textContent = help.headline;
-    elements.trustReason.textContent = help.reason;
-    elements.trustCheck.textContent = help.check;
-    elements.trustCommand.textContent = help.command;
-    elements.trustNote.textContent = help.note;
-    elements.trustNever.textContent = help.never;
-    elements.trustClose.textContent = help.close;
-    elements.trustPanel.hidden = false;
-    elements.trustClose.focus();
-  } catch (error) {
-    showFailure(String(error));
-  }
-}
-
-elements.trustWhy?.addEventListener("click", () => void showTrustHelp());
-elements.trustClose?.addEventListener("click", () => {
-  elements.trustPanel.hidden = true;
-});
-
-async function start() {
-  elements.trust.textContent = TRUST;
-  try {
-    const help = await invoke("trust_help");
-    elements.trustWhy.textContent = help.why;
-  } catch (error) {
-    /* the sentence is a convenience; the panel reports its own failure */
-  }
-
-  // First what the window says while it works, then the list, then the diagnoses.
-  try {
-    setHeadline(await invoke("checking", { localeTag: null }));
-  } catch (error) {
-    showFailure(String(error));
+  if (!install) {
+    state.findings = [];
+    state.diagnosedId = null;
+    state.kindState[kind] = "absent";
+    paintTabs();
+    const copy = await invoke("absent", { kind });
+    if (token !== selectToken) return;
+    setCopy({ ...copy, action: "install" });
     return;
   }
 
-  let rows;
-  try {
-    rows = await invoke("list");
-  } catch (error) {
-    showFailure(String(error));
-    return;
-  }
-
-  // `?empty=1` shows the screen for a machine with nothing installed. It exists because
-  // that state cannot be produced here — every discovery path on this machine finds at least
-  // one installation — and a screen nobody has ever seen is a screen nobody has checked.
-  if (new URLSearchParams(location.search).has("empty")) {
-    rows = [];
-  }
-  drawRows(rows);
-  elements.copy.hidden = rows.length === 0;
-
-  if (rows.length === 1) {
-    lastDiagnosed = rows[0];
-    // One installation: diagnosing it is the first screen's job, and the user sees the
-    // result without having to ask. §20.1's third path.
-    await diagnoseRow(rows[0]);
-    return;
-  }
-
-  // Several installations: diagnosing all of them would take half a minute for answers
-  // nobody asked for. The design says "pick one to work on", so the rows say what they are
-  // and a click diagnoses the one that was chosen.
-  rows.forEach((install) => {
-    const detail = elements.installations.querySelector(
-      `[data-id="${install.id}"] [data-role="detail"]`,
-    );
-    if (detail) detail.textContent = "click to check";
-  });
-  chosen = null;
-  try {
-    setHeadline(
-      await invoke("summarize", {
-        layout: layoutMeasurements(),
-        installs: rows.map((row) => ({
-          kind: row.kind,
-          version: row.version,
-          findings: 0,
-          repairable: 0,
-        })),
-      }),
-    );
-  } catch (error) {
-    showFailure(String(error));
-  }
-}
-
-/// Diagnoses one row, in place, and folds the answer into the headline.
-async function diagnoseRow(install) {
-  const detail = () =>
-    elements.installations.querySelector(`[data-id="${install.id}"] [data-role="detail"]`);
-  if (detail()) detail().textContent = CHECKING;
-  elements.status.textContent = "checking this one…";
+  state.findings = [];
+  state.diagnosedId = null;
+  setCopy({ headline: t("checking"), reason: "", next_step: "", action: "" });
+  setBusy(true);
   try {
     const findings = await invoke("diagnose", { installId: install.id });
-    const repairable = findings.filter((finding) => finding.repairable).length;
-    const result = {
-      kind: install.kind,
-      version: install.version,
-      findings: findings.length,
-      repairable,
-    };
-    if (detail()) detail().textContent = detailFor(result);
-    elements.status.textContent = "";
-    lastDiagnosed = install;
-    showFormButtons();
-    showFormButtons();
-    setHeadline(
-      await invoke("summarize", { layout: layoutMeasurements(), installs: [result] }),
-    );
-    await showFindings(install.id, { quiet: true });
+    if (token !== selectToken) return;
+    state.findings = findings;
+    state.diagnosedId = install.id;
+    install.findings = findings.length;
+    install.repairable = findings.filter((finding) => finding.repairable).length;
+    state.kindState[kind] = findings.length ? "attention" : "ok";
+    const copy = await invoke("summarize", {
+      layout: null,
+      installs: [
+        {
+          kind: install.kind,
+          version: install.version,
+          findings: findings.length,
+          repairable: install.repairable,
+        },
+      ],
+    });
+    if (token !== selectToken) return;
+    setCopy(copy);
+    paintTabs();
   } catch (error) {
-    if (detail()) detail().textContent = "could not be checked";
-    showFailure(String(error));
+    if (token !== selectToken) return;
+    state.kindState[kind] = "attention";
+    paintTabs();
+    setCopy({ headline: t("problems"), reason: String(error), next_step: "", action: "" });
+    toast(String(error), { error: true });
+  } finally {
+    if (token === selectToken) setBusy(false);
   }
 }
 
-/// The install the primary button is about, once something is chosen.
-let chosen = null;
+function setCopy(copy) {
+  state.copy = copy;
+  const headline = copy.headline || "…";
+  $("headline").textContent = headline;
+  $("headline").classList.toggle("long", headline.length > 24);
+  $("reason").textContent = copy.reason || "";
+  $("eyebrow-kind").textContent = kindName(state.kind);
 
-/// The installation the headline describes, so the primary button knows its subject.
-let lastDiagnosed = null;
+  const install = selectedInstall();
+  const versionText = install ? install.version : "";
+  $("version").textContent = versionText;
+  // The kernel's "ready" sentence already names the version; printing it twice in two
+  // lines is the kind of small repetition that makes a screen look assembled.
+  $("version").hidden = !install || headline.includes(versionText);
 
-/// Asks for a plan and shows it. Nothing has changed at this point.
-async function askForPlan(install) {
-  chosen = install;
-  elements.status.textContent = "asking what a repair would do…";
+  $("state-dot").className = `state-dot ${dotClass()}`;
+  $("primary").hidden = !copy.next_step;
+  $("primary-label").textContent = copy.next_step || "";
+  setPrimaryIcon(copy.action || "start");
+  $("detail-link").hidden = state.findings.length === 0;
+}
+
+function dotClass() {
+  const kind = state.kindState[state.kind];
+  if (kind === "attention") return "attention";
+  if (kind === "ok") return "ok";
+  return "";
+}
+
+const ICONS = {
+  play: '<path d="M8.4 5.6v12.8L19 12z"/>',
+  repair:
+    '<path d="M14.6 6.4a4.2 4.2 0 0 0-5.5 5.3L4.2 16.6V20h3.4l4.9-4.9a4.2 4.2 0 0 0 5.3-5.5l-2.6 2.6-2.4-.7-.7-2.4z"/>',
+  install:
+    '<path d="M12 3.5v11"/><path d="m7.5 10 4.5 4.5 4.5-4.5"/><path d="M4.5 17.5v1A2.5 2.5 0 0 0 7 21h10a2.5 2.5 0 0 0 2.5-2.5v-1"/>',
+  choose:
+    '<rect x="4" y="4" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1"/>',
+};
+
+function setPrimaryIcon(action) {
+  const icon = $("primary-icon");
+  const name = Object.prototype.hasOwnProperty.call(ICONS, action) ? action : "play";
+  icon.innerHTML = ICONS[name];
+  icon.classList.toggle("play", name === "play");
+}
+
+function setBusy(busy) {
+  state.busy = busy;
+  $("primary").disabled = busy;
+  $("menu-toggle").disabled = busy;
+}
+
+// ------------------------------------------------------------------ actions
+
+async function runForm(action) {
+  const install = selectedInstall();
+  if (!install) {
+    await openInstall();
+    return;
+  }
+  setBusy(true);
+  toast(action === "start" ? t("starting") : t("stopping"));
   try {
-    const plan = await invoke("repair_plan", { installId: install.id });
-    elements.backup.textContent = plan.backup;
-    elements.stepsHeading.textContent = plan.heading;
-    elements.steps.replaceChildren(
-      ...plan.steps.map((text) => {
+    const result = await invoke("form_action", { installId: install.id, action });
+    state.running = result.running;
+    state.url = result.url || null;
+    if (result.url) {
+      $("open-link").hidden = false;
+      $("open-link").textContent = t("open");
+    }
+    toast(
+      action === "start"
+        ? result.running
+          ? t("started")
+          : t("problems")
+        : result.running
+          ? t("already_running")
+          : t("stopped"),
+    );
+    if (state.settings.afterStart && action === "start") {
+      setTimeout(() => void select(state.kind, { id: install.id }), 1600);
+    }
+  } catch (error) {
+    toast(String(error), { error: true });
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function askForPlan() {
+  const install = selectedInstall();
+  if (!install) return;
+  setBusy(true);
+  try {
+    const plan = await invoke("repair_plan", { installId: install.id, action: "repair" });
+    state.plan = { install, plan };
+    $("plan-title").textContent = state.copy.next_step || t("details");
+    $("plan-backup").textContent = plan.backup;
+    $("plan-heading").textContent = plan.heading;
+    $("plan-steps").replaceChildren(
+      ...plan.steps.map((step) => {
         const item = document.createElement("li");
-        item.textContent = text;
+        item.textContent = step;
         return item;
       }),
     );
-    elements.confirmStart.textContent = plan.confirm;
-    elements.confirmCancel.textContent = plan.cancel;
-    elements.panel.hidden = false;
-    elements.status.textContent = "";
-    // §20.7: the default focus is the way out, not the way in.
-    elements.confirmCancel.focus();
+    $("plan-cancel").textContent = plan.cancel;
+    $("plan-confirm").textContent = plan.confirm;
+    openSheet("sheet-plan", "plan-cancel");
   } catch (error) {
-    elements.status.textContent = "";
-    showFailure(String(error));
+    const text = String(error);
+    toast(/nothing to repair/i.test(text) ? t("nothing_to_repair") : text, { error: true });
+  } finally {
+    setBusy(false);
   }
 }
 
 async function runRepair() {
-  if (!chosen) return;
-  elements.panel.hidden = true;
-  elements.primary.disabled = true;
-  elements.status.textContent = "repairing…";
+  if (!state.plan) return;
+  const { install } = state.plan;
+  $("plan-confirm").disabled = true;
   try {
-    const result = await invoke("repair_apply", { installId: chosen.id });
-    elements.headline.textContent = result.headline;
-    elements.reason.textContent = result.reason;
-    elements.primary.hidden = !result.next_step;
-    setPrimary({ next_step: result.next_step, action: result.findings === 0 ? "start" : "repair" });
-    elements.status.textContent = result.applied
-      ? result.findings === 0
-        ? "done"
-        : `${result.findings} problem(s) left`
-      : "the repair did not finish";
-    // Both the row and the detail list are stale now.
-    await refreshRow(chosen);
-    await showFindings(chosen.id, { quiet: true });
-    // §20.3: what was just changed can be put back, and the button says so.
-    if (result.applied) {
-      try {
-        const labels = await invoke("form_action", { installId: "", action: "labels" });
-        elements.formUndo.textContent = labels.undo_label;
-      } catch (error) {
-        elements.formUndo.textContent = "Undo";
-      }
-      elements.formUndo.hidden = false;
-    }
+    const result = await invoke("repair_apply", { installId: install.id });
+    closeSheet();
+    state.lastRepair = install.id;
+    toast(result.findings === 0 ? t("details_none") : `${t("problems")}: ${result.findings}`);
+    await select(install.kind, { id: install.id });
   } catch (error) {
-    showFailure(String(error));
+    closeSheet();
+    toast(String(error), { error: true });
   } finally {
-    elements.primary.disabled = false;
+    $("plan-confirm").disabled = false;
+    state.plan = null;
   }
 }
 
-/// Re-diagnoses one row after a change.
-async function refreshRow(install) {
-  try {
-    const findings = await invoke("diagnose", { installId: install.id });
-    const repairable = findings.filter((finding) => finding.repairable).length;
-    const detail = elements.installations.querySelector(
-      `[data-id="${install.id}"] [data-role="detail"]`,
-    );
-    if (detail) {
-      detail.textContent = detailFor({ findings: findings.length, repairable });
-    }
-  } catch (error) {
-    /* the headline already says what happened */
-  }
-}
-
-/// What the main button is currently for, from the copy crate's own decision.
-let primaryAction = "";
-
-function setPrimary(copy) {
-  if (!copy.next_step) {
-    elements.primary.hidden = true;
-    primaryAction = "";
-    return;
-  }
-  elements.primary.textContent = copy.next_step;
-  elements.primary.hidden = false;
-  primaryAction = copy.action || "";
-}
-
-elements.primary?.addEventListener("click", () => {
-  const target = chosen || lastDiagnosed;
-  switch (primaryAction) {
-    case "start":
-      if (target) void runFormAction("start");
-      break;
-    case "repair":
-      if (target) void askForPlan(target);
-      break;
-    case "install":
-      void showInstallHelp();
-      break;
-    case "choose":
-      elements.installations.querySelector(".row")?.focus();
-      break;
-    default:
-      break;
-  }
-});
-
-elements.confirmCancel?.addEventListener("click", () => {
-  elements.panel.hidden = true;
-  elements.status.textContent = "";
-});
-
-elements.confirmStart?.addEventListener("click", () => void runRepair());
-
-/// Starts or stops the chosen form, then says what state it is in.
-async function runFormAction(action) {
-  const install = chosen || lastDiagnosed;
-  if (!install) return;
-  elements.status.textContent = action === "start" ? "starting…" : "stopping…";
-  elements.formStop.disabled = true;
-  try {
-    const result = await invoke("form_action", { installId: install.id, action });
-    elements.formStop.textContent = result.stop_label;
-    elements.formUrl.textContent = result.open_label;
-    elements.formUrl.href = result.url || "#";
-    elements.formUrl.hidden = !result.url;
-    elements.status.textContent = result.message;
-    chosen = install;
-  } catch (error) {
-    elements.status.textContent = "";
-    showFailure(String(error));
-  } finally {
-    elements.formStop.disabled = false;
-  }
-}
-
-elements.formStop?.addEventListener("click", () => void runFormAction("stop"));
-
-/// Undoes the repair that was just applied, and says what the machine looks like now.
 async function runUndo() {
-  const install = chosen || lastDiagnosed;
+  const install = selectedInstall();
   if (!install) return;
-  elements.status.textContent = "undoing…";
-  elements.formUndo.disabled = true;
+  $("details-undo").disabled = true;
   try {
     const result = await invoke("undo_repair", { installId: install.id });
-    elements.headline.textContent = result.headline;
-    elements.reason.textContent = result.reason;
-    elements.status.textContent = result.findings === 0 ? "done" : `${result.findings} problem(s)`;
-    await refreshRow(install);
-    await showFindings(install.id, { quiet: true });
+    closeSheet();
+    state.lastRepair = null;
+    toast(result.findings === 0 ? t("details_none") : `${t("problems")}: ${result.findings}`);
+    await select(install.kind, { id: install.id });
   } catch (error) {
-    showFailure(String(error));
+    toast(String(error), { error: true });
   } finally {
-    elements.formUndo.disabled = false;
+    $("details-undo").disabled = false;
   }
 }
 
-elements.formUndo?.addEventListener("click", () => void runUndo());
+// ------------------------------------------------------------------- details
 
-elements.copy?.addEventListener("click", async () => {
+function renderFindings(findings) {
+  if (findings.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.innerHTML =
+      '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.6 2.6L16.5 9"/></svg>';
+    const line = document.createElement("div");
+    line.textContent = t("details_none");
+    empty.append(line);
+    return [empty];
+  }
+  return findings.map((finding) => {
+    const card = document.createElement("article");
+    card.className = `finding${finding.repairable ? " repairable" : ""}`;
+    const title = document.createElement("h3");
+    title.textContent = finding.headline;
+    const reason = document.createElement("p");
+    reason.textContent = finding.reason;
+    const next = document.createElement("p");
+    next.className = "next";
+    next.textContent = finding.next_step;
+    card.append(title, reason, next);
+    return card;
+  });
+}
+
+async function openDetails() {
+  const install = selectedInstall();
+  if (!install) {
+    await openInstall();
+    return;
+  }
+  openSheet("sheet-details", "details-close");
+  const body = $("details-body");
+  body.replaceChildren();
+  const spinner = document.createElement("div");
+  spinner.className = "spinner";
+  body.append(spinner);
+  $("details-repair").hidden = true;
+  $("details-undo").hidden = true;
+
   try {
-    const text = [elements.headline.textContent, elements.reason.textContent].join("\n");
-    await navigator.clipboard.writeText(text);
-    elements.status.textContent = "copied";
+    const findings =
+      state.diagnosedId === install.id
+        ? state.findings
+        : await invoke("diagnose", { installId: install.id });
+    state.findings = findings;
+    state.diagnosedId = install.id;
+    body.replaceChildren(...renderFindings(findings));
+    const repairable = findings.filter((finding) => finding.repairable).length;
+    $("details-repair").hidden = repairable === 0;
+    $("details-repair").textContent = t("repair");
+    $("details-undo").hidden = state.lastRepair !== install.id;
+    $("detail-link").hidden = findings.length === 0;
   } catch (error) {
-    elements.status.textContent = String(error);
+    body.textContent = String(error);
   }
-});
+}
 
-const AUTO = new URLSearchParams(location.search).has("autorepair");
+function diagnosticText() {
+  const install = selectedInstall();
+  const lines = [];
+  if (install) lines.push(`${install.name} ${install.version}`);
+  if (state.copy.headline) lines.push(state.copy.headline);
+  if (state.copy.reason) lines.push(state.copy.reason);
+  for (const finding of state.findings) {
+    lines.push(`- ${finding.headline}: ${finding.reason} → ${finding.next_step}`);
+  }
+  return lines.join("\n");
+}
 
-start().then(async () => {
-  // `?update=1` runs the update check on start, so the panel can be seen without a tray click.
-  if (new URLSearchParams(location.search).has("update")) {
-    await runUpdateCheck();
+async function copyDiagnostics() {
+  try {
+    await navigator.clipboard.writeText(diagnosticText());
+    toast(t("copied"));
+  } catch (error) {
+    toast(String(error), { error: true });
   }
-  // `?trust=1` opens the unsigned-distribution explanation, same reason as `?guide=1`.
-  if (new URLSearchParams(location.search).has("trust")) {
-    await showTrustHelp();
+}
+
+// ------------------------------------------------------------------- installs
+
+function openInstalls() {
+  const body = $("installs-body");
+  if (state.installs.length === 0) {
+    body.textContent = t("details_none");
+  } else {
+    body.replaceChildren(
+      ...state.installs.map((row) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "install-row";
+
+        const name = document.createElement("span");
+        name.className = "name";
+        name.textContent = row.name;
+        const meta = document.createElement("span");
+        meta.className = "meta";
+        meta.textContent = row.version;
+        const path = document.createElement("span");
+        path.className = "path";
+        path.textContent = row.root;
+
+        button.append(name, meta, path);
+        button.addEventListener("click", () => {
+          closeSheet();
+          void select(row.kind, { id: row.id });
+        });
+        return button;
+      }),
+    );
   }
-  // `?guide=1` opens the install guidance so it can be seen without a hand on the mouse.
-  if (new URLSearchParams(location.search).has("guide")) {
-    await showInstallHelp();
+  openSheet("sheet-installs");
+}
+
+// -------------------------------------------------------------------- install
+
+async function openInstall() {
+  try {
+    const help = await invoke("install_help");
+    $("install-guidance").textContent = help.guidance;
+    $("install-steps").replaceChildren(
+      ...help.steps.map((step) => {
+        const box = document.createElement("div");
+        box.className = "install-step";
+        const label = document.createElement("div");
+        label.className = "label";
+        label.textContent = step.label;
+        const code = document.createElement("code");
+        code.textContent = step.command;
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.className = "copy";
+        copy.textContent = help.copy_label;
+        copy.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(step.command);
+            toast(t("copied"));
+          } catch (error) {
+            toast(String(error), { error: true });
+          }
+        });
+        box.append(label, code, copy);
+        return box;
+      }),
+    );
+    openSheet("sheet-install");
+  } catch (error) {
+    toast(String(error), { error: true });
   }
-  if (!AUTO) return;
-  const target = lastDiagnosed || (await invoke("list"))[0];
-  if (!target) return;
-  await askForPlan(target);
-  // `hold` stops at the confirmation panel and `slow` pauses there: both exist so the panel
-  // can be photographed. The real pace is a second and a half.
-  const mode = new URLSearchParams(location.search).get("autorepair");
-  if (mode === "hold") return;
-  await new Promise((resolve) => setTimeout(resolve, mode === "slow" ? 8000 : 1500));
-  await runRepair();
-});
+}
+
+// ----------------------------------------------------------------------- trust
+
+function openTrust() {
+  const trust = state.trust;
+  if (!trust) return;
+  $("trust-headline").textContent = trust.headline;
+  $("trust-reason").textContent = trust.reason;
+  $("trust-check").textContent = trust.check;
+  $("trust-command").textContent = trust.command;
+  $("trust-note").textContent = trust.note;
+  $("trust-never").textContent = trust.never;
+  $("trust-close").textContent = trust.close;
+  openSheet("sheet-trust", "trust-close");
+}
+
+// -------------------------------------------------------------------- settings
+
+function selectPage(page) {
+  $("nav-launcher").classList.toggle("is-active", page === "launcher");
+  $("nav-about").classList.toggle("is-active", page === "about");
+  $("page-launcher").hidden = page !== "launcher";
+  $("page-about").hidden = page !== "about";
+}
+
+function syncSettings() {
+  $("set-autostart").checked = state.info.autostart;
+  $("set-autoupdate").checked = state.settings.autoupdate;
+  $("set-tray").checked = state.settings.tray;
+  $("set-tray").disabled = !state.info.tray;
+  $("tray-note").hidden = state.info.tray;
+}
+
+function openSettings(page = "launcher") {
+  selectPage(page);
+  syncSettings();
+  openSheet("sheet-settings", page === "about" ? "nav-about" : "nav-launcher");
+}
+
+// ---------------------------------------------------------------------- update
+
+function setUpdateMark(kind) {
+  const mark = $("update-mark");
+  const paths = {
+    download:
+      '<path d="M12 3.5v11"/><path d="m7.5 10 4.5 4.5 4.5-4.5"/><path d="M4.5 17.5v1A2.5 2.5 0 0 0 7 21h10a2.5 2.5 0 0 0 2.5-2.5v-1"/>',
+    check: '<circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.6 2.6L16.5 9"/>',
+    alert: '<circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.2v.1"/>',
+  };
+  mark.innerHTML = `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${paths[kind] || paths.download}</svg>`;
+}
+
+async function runUpdate({ quiet = false } = {}) {
+  $("update").disabled = true;
+  $("update-label").textContent = t("update_busy");
+  if (!quiet) {
+    openSheet("sheet-update");
+    setUpdateMark("download");
+    $("update-headline").textContent = t("update_checking");
+    $("update-detail").textContent = t("update_checking_detail");
+    $("update-proof").textContent = "";
+    $("update-install").hidden = true;
+    $("update-cancel").textContent = t("update_later");
+  }
+  try {
+    const result = await invoke("update_check");
+    state.update = result;
+    $("update-label").textContent = t("update_ready");
+    $("update-dot").hidden = false;
+    if (!quiet) {
+      if (result.published === result.current) {
+        setUpdateMark("check");
+        $("update-headline").textContent = t("update_none");
+        $("update-detail").textContent = t("update_none_detail");
+        $("update-proof").textContent = "";
+        $("update-install").hidden = true;
+      } else {
+        setUpdateMark("download");
+        $("update-headline").textContent = fill(t("update_available"), {
+          version: result.published,
+        });
+        $("update-detail").textContent = fill(t("update_running"), {
+          current: result.current,
+          files: result.files,
+        });
+        $("update-proof").textContent = fill(t("update_proof"), { key: result.key_id });
+        $("update-install").textContent = fill(t("update_install"), {
+          version: result.published,
+        });
+        $("update-install").hidden = false;
+      }
+    }
+  } catch (error) {
+    $("update-label").textContent = t("update");
+    if (quiet) {
+      // An automatic check that cannot reach the release page is not news; the manual
+      // button is where the reason is shown.
+      $("update-label").textContent = t("update");
+    } else {
+      setUpdateMark("alert");
+      $("update-headline").textContent = t("update_failed");
+      $("update-detail").textContent = String(error);
+      $("update-proof").textContent = t("update_failed_detail");
+      $("update-install").hidden = true;
+    }
+  } finally {
+    $("update").disabled = false;
+  }
+}
+
+async function runUpdateApply() {
+  if (!state.update) return;
+  $("update-install").disabled = true;
+  $("update-install").hidden = true;
+  $("update-headline").textContent = t("update_installing");
+  $("update-detail").textContent = t("update_installing_detail");
+  $("update-proof").textContent = "";
+  try {
+    await invoke("update_apply", { stagedDir: state.update.staged_dir });
+    setUpdateMark("check");
+    $("update-headline").textContent = t("update_done");
+    $("update-detail").textContent = "";
+    setTimeout(() => void invoke("quit_now"), 1000);
+  } catch (error) {
+    setUpdateMark("alert");
+    $("update-headline").textContent = t("update_broken");
+    $("update-detail").textContent = String(error);
+    $("update-proof").textContent = t("update_rolledback");
+    $("update-install").disabled = false;
+    $("update-install").hidden = false;
+  }
+}
+
+// ------------------------------------------------------------------------ menu
+
+function toggleMenu(force) {
+  const open = typeof force === "boolean" ? force : $("menu").hidden;
+  // Checking an installation that is not there has no meaning; the item says so by being
+  // disabled rather than by opening an installation guide under a diagnostic label.
+  $("menu-integrity").disabled = !selectedInstall();
+  $("menu").hidden = !open;
+  $("menu-toggle").setAttribute("aria-expanded", String(open));
+  $("menu-icon").innerHTML = open
+    ? '<path d="M6 6l12 12M18 6 6 18"/>'
+    : '<path d="M5 8h14M5 12h14M5 16h14"/>';
+}
+
+function closeMenu() {
+  if ($("menu").hidden) return;
+  toggleMenu(false);
+}
+
+// ------------------------------------------------------------------- wiring
+
+function wire() {
+  $("primary").addEventListener("click", () => {
+    if (state.busy) return;
+    switch (state.copy.action) {
+      case "start":
+        void runForm("start");
+        break;
+      case "repair":
+        void askForPlan();
+        break;
+      case "install":
+        void openInstall();
+        break;
+      case "choose":
+        openInstalls();
+        break;
+      default:
+        break;
+    }
+  });
+
+  $("menu-toggle").addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleMenu();
+  });
+  $("menu-settings").addEventListener("click", () => openSettings("launcher"));
+  $("menu-shortcut").addEventListener("click", async () => {
+    closeMenu();
+    try {
+      await invoke("create_shortcut");
+      toast(t("shortcut_done"));
+    } catch (error) {
+      toast(String(error), { error: true });
+    }
+  });
+  $("menu-integrity").addEventListener("click", () => {
+    closeMenu();
+    void openDetails();
+  });
+  $("menu-cache").addEventListener("click", async () => {
+    closeMenu();
+    try {
+      await invoke("clear_cache");
+      toast(t("cache_done"));
+    } catch (error) {
+      toast(String(error), { error: true });
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".launch")) closeMenu();
+  });
+
+  $("update").addEventListener("click", () => void runUpdate());
+  $("update-install").addEventListener("click", () => void runUpdateApply());
+  $("update-cancel").addEventListener("click", closeSheet);
+
+  $("settings").addEventListener("click", () => openSettings("launcher"));
+  $("minimize").addEventListener("click", () => void invoke("window_action", { action: "minimize" }));
+  $("close").addEventListener("click", async () => {
+    if (!state.info.tray || !state.settings.tray) {
+      await invoke("window_action", { action: "quit" });
+      return;
+    }
+    if (state.settings.closeNotice) {
+      await invoke("window_action", { action: "hide" });
+      return;
+    }
+    openSheet("sheet-close", "close-keep");
+  });
+  $("close-keep").addEventListener("click", async () => {
+    if ($("close-remember").checked) {
+      state.settings.closeNotice = true;
+      saveSettings();
+    }
+    closeSheet();
+    await invoke("window_action", { action: "hide" });
+  });
+  $("close-quit").addEventListener("click", async () => {
+    if ($("close-remember").checked) {
+      state.settings.closeNotice = true;
+      saveSettings();
+    }
+    await invoke("window_action", { action: "quit" });
+  });
+
+  $("all-installs").addEventListener("click", openInstalls);
+  $("detail-link").addEventListener("click", () => void openDetails());
+  $("details-close").addEventListener("click", closeSheet);
+  $("details-copy").addEventListener("click", () => void copyDiagnostics());
+  $("details-undo").addEventListener("click", () => void runUndo());
+  $("details-repair").addEventListener("click", () => {
+    closeSheet();
+    void askForPlan();
+  });
+
+  $("plan-cancel").addEventListener("click", closeSheet);
+  $("plan-confirm").addEventListener("click", () => void runRepair());
+
+  $("nav-launcher").addEventListener("click", () => selectPage("launcher"));
+  $("nav-about").addEventListener("click", () => selectPage("about"));
+  $("about-update").addEventListener("click", () => void runUpdate());
+  $("about-trust").addEventListener("click", openTrust);
+  $("about-copy").addEventListener("click", () => void copyDiagnostics());
+  $("about-repo").addEventListener("click", () => void invoke("open_url", { url: REPO }));
+  $("about-log").addEventListener("click", () => void invoke("open_log"));
+
+  $("set-autoupdate").addEventListener("change", (event) => {
+    state.settings.autoupdate = event.target.checked;
+    saveSettings();
+  });
+  $("set-tray").addEventListener("change", (event) => {
+    state.settings.tray = event.target.checked;
+    saveSettings();
+  });
+  $("set-autostart").addEventListener("change", async (event) => {
+    const wanted = event.target.checked;
+    event.target.disabled = true;
+    try {
+      const now = await invoke("set_autostart", { enabled: wanted });
+      state.info.autostart = now;
+      event.target.checked = now;
+      if (now !== wanted) toast(t("setting_failed"), { error: true });
+    } catch (error) {
+      event.target.checked = !wanted;
+      toast(String(error), { error: true });
+    } finally {
+      event.target.disabled = false;
+    }
+  });
+
+  $("after-start").addEventListener("change", (event) => {
+    state.settings.afterStart = event.target.checked;
+    saveSettings();
+  });
+
+  $("open-link").addEventListener("click", () => {
+    if (state.url) void invoke("open_url", { url: state.url });
+  });
+
+  $("overlay").addEventListener("click", (event) => {
+    if (event.target === $("overlay")) closeSheet();
+  });
+  for (const button of document.querySelectorAll("[data-close]")) {
+    button.addEventListener("click", closeSheet);
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    if (!$("menu").hidden) {
+      closeMenu();
+      return;
+    }
+    if (!$("overlay").hidden) closeSheet();
+  });
+
+  window.__TAURI__?.event?.listen?.("update-requested", () => void runUpdate());
+}
+
+// ------------------------------------------------------------------------ boot
+
+async function refresh() {
+  let rows = await invoke("list");
+  if (params.has("empty")) rows = [];
+  state.installs = rows;
+  state.byKind = { desktop: [], web: [], tui: [] };
+  for (const row of rows) {
+    (state.byKind[row.kind] ||= []).push(row);
+  }
+  state.kindState = {};
+  for (const kind of ORDER) {
+    // Installed but not yet checked is not the same as healthy. The badge stays grey until
+    // this window has actually run the check for that distribution.
+    state.kindState[kind] = state.byKind[kind].length ? "unknown" : "absent";
+  }
+  // `?kind=web` starts on a chosen rail slot. It exists so each distribution's screen can
+  // be photographed without a mouse; the rail does the same thing with a click.
+  const wanted = params.get("kind");
+  const first =
+    (wanted && state.byKind[wanted] ? wanted : null) ||
+    ORDER.find((kind) => state.byKind[kind].length) ||
+    "desktop";
+  state.kind = first;
+  renderTabs();
+  await select(first);
+}
+
+async function boot() {
+  loadSettings();
+  try {
+    const [chrome, info, trust, labels] = await Promise.all([
+      invoke("chrome"),
+      invoke("shell_info"),
+      invoke("trust_help"),
+      invoke("form_action", { installId: "", action: "labels" }).catch(() => ({})),
+    ]);
+    state.chrome = chrome;
+    state.info = info;
+    state.trust = trust;
+    state.labels = labels || {};
+  } catch (error) {
+    $("headline").textContent = String(error);
+    $("reason").textContent = "";
+    return;
+  }
+
+  applyChrome();
+  wire();
+  $("after-start").checked = state.settings.afterStart;
+
+  try {
+    await refresh();
+  } catch (error) {
+    // A window without its kernel is the one state where the copy crate cannot describe
+    // the machine for it; the sentence comes from the shell, and the raw reason stays
+    // visible because it is what a bug report needs.
+    $("headline").textContent = t("kernel_missing");
+    $("reason").textContent = `${String(error)} — ${t("kernel_hint")}`;
+    $("headline").classList.add("long");
+    return;
+  }
+
+  // WebView2 hands focus to the first focusable element when the window activates. A yellow
+  // ring on a control nobody chose reads as a selection, so the board starts without one;
+  // the first Tab puts it back.
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+
+  if (state.settings.autoupdate) {
+    setTimeout(() => void runUpdate({ quiet: true }), 1500);
+  }
+
+  const mode = params.get("autorepair");
+  if (params.has("settings")) openSettings(params.has("about") ? "about" : "launcher");
+  if (params.has("menu")) toggleMenu(true);
+  if (params.has("details")) void openDetails();
+  if (params.has("update")) void runUpdate();
+  if (params.has("trust")) openTrust();
+  if (params.has("guide")) void openInstall();
+  if (params.has("close")) openSheet("sheet-close", "close-keep");
+  if (mode !== null) {
+    await askForPlan();
+    if (mode === "slow" || mode === "hold") return;
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await runRepair();
+  }
+}
+
+boot();

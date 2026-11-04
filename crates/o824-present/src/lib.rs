@@ -23,6 +23,9 @@
 
 use std::collections::BTreeMap;
 
+mod chrome;
+pub use chrome::{absent_copy, chrome, Chrome};
+
 /// The languages the first release ships.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Locale {
@@ -44,7 +47,7 @@ impl Locale {
 }
 
 /// One sentence group: what happened, why, and what to do about it.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Copy {
     /// The headline: what the user sees first.
     pub headline: String,
@@ -483,11 +486,87 @@ fn catalog() -> &'static [(&'static str, &'static str, &'static str)] {
         ("check.F28.next", "Follow its instructions", "按它的提示处理"),
         ("check.unknown.headline", "Something is wrong with this installation", "这个安装有问题"),
         ("check.unknown.reason", "The diagnostic tool could not name the cause.", "诊断工具没能确定原因。"),
+        // The launcher shell. Labels, not diagnoses: they name a control, never a machine.
+        ("chrome.update", "Check for updates", "检查更新"),
+        ("chrome.update.busy", "Checking…", "正在检查…"),
+        ("chrome.update.ready", "Update available", "有更新"),
+        ("chrome.settings", "Settings", "设置"),
+        ("chrome.minimize", "Minimize", "最小化"),
+        ("chrome.close", "Close", "关闭"),
+        ("chrome.distributions", "Distributions", "发行版"),
+        ("chrome.all_installs", "All installations", "全部安装"),
+        ("chrome.installed", "Installed", "已安装"),
+        ("chrome.not_installed", "Not installed", "未安装"),
+        ("chrome.problems", "Needs attention", "需要处理"),
+        ("chrome.launcher_settings", "Launcher settings", "启动器设置"),
+        ("chrome.about", "About", "关于"),
+        ("chrome.more", "More", "更多"),
+        ("chrome.kind_desktop", "Desktop app", "桌面版"),
+        ("chrome.kind_web", "Browser version", "浏览器版"),
+        ("chrome.kind_tui", "Terminal client", "终端客户端"),
+        ("chrome.nothing_to_repair", "There is nothing the kernel can repair automatically.", "没有需要自动修复的项目。"),
+        ("chrome.kernel_missing", "The launcher's kernel could not be started", "启动器内核没有找到"),
+        ("chrome.kernel_hint", "Run O824 from the folder it was installed into. The command line still works: o824 doctor", "请从安装目录运行 O824。命令行仍然可用：o824 doctor"),
+        ("chrome.startup", "Startup", "启动设置"),
+        ("chrome.autostart", "Start with Windows", "开机自动启动"),
+        ("chrome.autostart_detail", "Run the launcher when you sign in", "开机后自动运行启动器"),
+        ("chrome.update_section", "Updates", "更新设置"),
+        ("chrome.autoupdate", "Check for updates automatically", "自动检查更新"),
+        ("chrome.autoupdate_detail", "Checks at startup; installing always asks you first", "启动时检查新版本；安装前始终询问您"),
+        ("chrome.close_section", "When closing", "关闭设置"),
+        ("chrome.tray", "Keep running in the tray", "最小化到托盘"),
+        ("chrome.tray_detail", "The launcher keeps running after the window closes", "关闭窗口后继续在后台运行"),
+        ("chrome.shortcut", "Create a desktop shortcut", "创建桌面快捷方式"),
+        ("chrome.shortcut_done", "A shortcut was created on the desktop", "已在桌面创建快捷方式"),
+        ("chrome.integrity", "Check the installation", "完整性检查"),
+        ("chrome.cache", "Clear the update cache", "清理更新缓存"),
+        ("chrome.cache_done", "The update cache was cleared", "更新缓存已清理"),
+        ("chrome.details", "What was found", "问题详情"),
+        ("chrome.details_none", "No problems were found.", "没有发现问题。"),
+        ("chrome.copy", "Copy diagnostic information", "复制诊断信息"),
+        ("chrome.copied", "Copied", "已复制"),
+        ("chrome.open_folder", "Open the installation folder", "打开安装目录"),
+        ("chrome.open_log", "Open the log", "打开日志"),
+        ("chrome.tagline", "Unofficial · unsigned · open source", "非官方 · 未签名 · 开源"),
+        ("chrome.version", "Version", "版本"),
+        ("chrome.repo", "View the source on GitHub", "在 GitHub 上查看源码"),
+        ("chrome.close_notice_title", "Still running", "仍在后台运行"),
+        ("chrome.close_notice_reason", "Closing the window does not quit the launcher. It keeps waiting in the tray, and you can open it again at any time.", "关闭窗口不会退出启动器；它继续在托盘里等待，随时可以再打开。"),
+        ("chrome.close_keep", "Keep running", "留在后台"),
+        ("chrome.close_quit", "Quit", "退出程序"),
+        ("chrome.close_remember", "Do not ask again", "不再提示"),
+        ("chrome.tray_unavailable", "The tray icon is unavailable, so closing the window quits.", "托盘图标不可用，关闭窗口将退出程序。"),
+        ("chrome.after_start", "Check for problems after starting", "启动后自动体检"),
+        ("chrome.checking", "Checking…", "正在检查…"),
+        ("chrome.setting_failed", "That setting could not be saved", "没能保存这个设置"),
+        // The update dialog. §7.8: the last step is always taken by a person, never by
+        // silence, so the words say what was verified and what has not happened yet.
+        ("chrome.update_title", "Software update", "软件更新"),
+        ("chrome.update_checking", "Looking for a new version…", "正在检查更新…"),
+        ("chrome.update_checking_detail", "The kernel downloads the release and verifies its signature and every file hash.", "内核会下载发布包，并核对签名和每个文件的哈希。"),
+        ("chrome.update_available", "Version {version} is available", "发现新版本 {version}"),
+        ("chrome.update_running", "Running {current}. The release has {files} files.", "当前版本 {current}，发布包共 {files} 个文件。"),
+        ("chrome.update_proof", "Signature verified with key {key}. Nothing has been installed.", "签名已核对（密钥 {key}）。尚未安装任何东西。"),
+        ("chrome.update_install", "Install {version}", "安装 {version}"),
+        ("chrome.update_later", "Not now", "暂不"),
+        ("chrome.update_failed", "No update was installed", "没有安装任何更新"),
+        ("chrome.update_failed_detail", "Nothing was changed. If you downloaded a release yourself, check it with verify-manifest.", "没有改动任何文件。如果想自己核对下载，可以运行 verify-manifest。"),
+        ("chrome.update_installing", "Installing…", "正在安装…"),
+        ("chrome.update_installing_detail", "Replaced files are backed up beside themselves as .bak, and put back if anything fails.", "被替换的文件会先备份为 .bak，失败时自动放回。"),
+        ("chrome.update_done", "Installed. The window will restart in a moment.", "已安装，窗口即将重启。"),
+        ("chrome.update_broken", "The update did not finish", "更新没有完成"),
+        ("chrome.update_rolledback", "Every replaced file was put back; the installed version is unchanged.", "所有被替换的文件都已放回，当前版本没有改变。"),
+        ("chrome.update_none", "You are up to date", "已是最新版本"),
+        ("chrome.update_none_detail", "The release page has nothing newer than the version you are running.", "发布页上没有比当前版本更新的清单。"),
+        // A distribution this machine does not have. Naming it is what makes the rail's
+        // empty slot different from "nothing at all is installed".
+        ("first.absent.headline", "{name} is not installed yet", "{name} 还没有安装"),
+        ("first.absent.reason", "This computer has no copy of it. The next step shows the official ways to get one.", "这台电脑上找不到它的安装。下一步会给出官方获取方式。"),
     ]
 }
 
 /// One catalog string, by key.
-fn text(locale: Locale, key: &str) -> String {
+pub(crate) fn text(locale: Locale, key: &str) -> String {
     text_or(locale, key, "check.unknown.headline")
 }
 
@@ -792,6 +871,37 @@ mod tests {
         );
         assert!(matches!(several, FirstUse::Several(_)));
         assert_eq!(several.copy().next_step, "Choose one");
+    }
+
+    /// The shell's own labels are copy too: both languages, and no silent English fallback.
+    #[test]
+    fn the_shell_labels_are_translated() {
+        let en = chrome(Locale::En);
+        let zh = chrome(Locale::ZhHans);
+        for (name, value) in [
+            ("update", &en.update),
+            ("settings", &en.settings),
+            ("details", &en.details),
+            ("update_title", &en.update_title),
+            ("close_notice_reason", &en.close_notice_reason),
+        ] {
+            assert!(!value.trim().is_empty(), "{name} is empty in English");
+        }
+        assert_ne!(en.settings, zh.settings);
+        assert_eq!(en.settings, "Settings");
+        assert_eq!(zh.settings, "设置");
+        // The sentence a first-time closer reads has to say what happens next.
+        assert!(zh.close_notice_reason.contains("托盘"));
+    }
+
+    /// An empty slot names the distribution it is missing, not the product in general.
+    #[test]
+    fn an_absent_distribution_is_named() {
+        let copy = absent_copy("web", Locale::ZhHans);
+        assert!(copy.headline.contains("浏览器"), "{copy:?}");
+        assert!(!copy.next_step.is_empty());
+        let copy = absent_copy("tui", Locale::En);
+        assert!(copy.headline.contains("terminal"), "{copy:?}");
     }
 
     /// A system language we do not ship falls back to English, not to nothing.

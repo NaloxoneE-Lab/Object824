@@ -1,5 +1,10 @@
 # P3 状态（GUI）
 
+> **2026-11-05：窗口外观已被 P4 扩展的"发行版板"替换**，见
+> [`P4-GUI-BOARD.md`](P4-GUI-BOARD.md) 与
+> [`superpowers/specs/2026-11-05-p4-gui-board-design.md`](superpowers/specs/2026-11-05-p4-gui-board-design.md)。
+> 本文下面的能力清单仍然成立；"列表在主区"这一条已不成立（列表进了"全部安装"弹层）。
+
 > 判据来源：`docs/design/2026-10-28-dsh-launcher-design.md` §7.4、§20。
 
 ## 已经能用的

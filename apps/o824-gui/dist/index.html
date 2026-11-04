@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -7,76 +7,295 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <!-- The window draws sentences the kernel produced; it never invents one. -->
-    <header class="bar">
-      <span class="mark">824</span>
-      <span class="trust" id="trust"></span>
-      <button id="trust-why" class="link-button"></button>
-    </header>
+    <!-- The board: a distribution rail, one hero, one start control. Every sentence about
+         the machine is written by the kernel; every label around it comes from the copy
+         crate, so neither language is assembled here. -->
+    <div class="app" id="app">
+      <aside class="rail" data-tauri-drag-region>
+        <div class="rail-logo" data-tauri-drag-region>
+          <img src="assets/logo.png" alt="O824" />
+        </div>
+        <nav class="tabs" id="tabs" aria-label=""></nav>
+        <button class="rail-foot" id="all-installs" aria-label="">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="4" y="4" width="6.5" height="6.5" rx="1" />
+            <rect x="13.5" y="4" width="6.5" height="6.5" rx="1" />
+            <rect x="4" y="13.5" width="6.5" height="6.5" rx="1" />
+            <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1" />
+          </svg>
+        </button>
+      </aside>
 
-    <main id="main">
-      <section class="hero">
-        <h1 id="headline">…</h1>
-        <p id="reason" class="reason"></p>
-        <button id="primary" class="primary" hidden></button>
-        <!-- §21.5: start and stop are actions of the same flow, so they sit beside repair
-             rather than on a different page. -->
-        <div id="form-buttons" class="actions inline" hidden>
-          <button id="form-stop" class="quiet" hidden></button>
-          <button id="form-undo" class="quiet" hidden></button>
-          <a id="form-url" class="link" target="_blank" rel="noreferrer" hidden></a>
+      <main class="stage" data-tauri-drag-region>
+        <div class="art" data-tauri-drag-region aria-hidden="true">
+          <div class="art-grid"></div>
+          <div class="art-glow"></div>
+          <div class="watermark">O824</div>
+        </div>
+
+        <header class="topbar">
+          <button class="chip" id="update">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3v11m0 0 4.5-4.5M12 14l-4.5-4.5" />
+              <path d="M4.5 17.5v1A2.5 2.5 0 0 0 7 21h10a2.5 2.5 0 0 0 2.5-2.5v-1" />
+            </svg>
+            <span id="update-label"></span>
+            <i class="dot" id="update-dot" hidden></i>
+          </button>
+          <button class="round" id="settings" aria-label="">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="3.2" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z" />
+            </svg>
+          </button>
+          <button class="round" id="minimize" aria-label="">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /></svg>
+          </button>
+          <button class="round" id="close" aria-label="">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6l12 12M18 6 6 18" />
+            </svg>
+          </button>
+        </header>
+
+        <section class="hero-copy" id="hero">
+          <div class="eyebrow">
+            <span class="state-dot" id="state-dot"></span>
+            <span id="eyebrow-kind"></span>
+            <span class="version" id="version" hidden></span>
+          </div>
+          <h1 id="headline">…</h1>
+          <p id="reason"></p>
+          <div class="hero-links">
+            <button class="text-link" id="detail-link" hidden></button>
+            <button class="text-link" id="open-link" hidden></button>
+          </div>
+        </section>
+
+        <div class="launch">
+          <div class="menu" id="menu" hidden>
+            <button class="menu-item" id="menu-settings"></button>
+            <button class="menu-item" id="menu-shortcut"></button>
+            <button class="menu-item" id="menu-integrity"></button>
+            <button class="menu-item separated" id="menu-cache"></button>
+          </div>
+          <div class="cta-row">
+            <button class="cta" id="primary" hidden>
+              <span class="cta-badge" id="primary-badge">
+                <svg class="ico" id="primary-icon" viewBox="0 0 24 24" aria-hidden="true"></svg>
+              </span>
+              <span id="primary-label"></span>
+            </button>
+            <button class="menu-toggle" id="menu-toggle" aria-label="" aria-expanded="false">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true" id="menu-icon">
+                <path d="M5 8h14M5 12h14M5 16h14" />
+              </svg>
+            </button>
+          </div>
+          <label class="checkline">
+            <input type="checkbox" id="after-start" />
+            <span id="after-start-label"></span>
+          </label>
+        </div>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" hidden>
+      <span id="toast-text"></span>
+    </div>
+
+    <div class="overlay" id="overlay" hidden>
+      <!-- Settings is the one dialog with its own navigation, so it is not built from the
+           generic sheet. -->
+      <section class="sheet settings-sheet" id="sheet-settings" role="dialog" aria-modal="true" hidden>
+        <header class="sheet-head">
+          <svg class="ico head-ico" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="3.2" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.64 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z" />
+          </svg>
+          <h2 id="settings-title"></h2>
+          <button class="icon-btn sheet-x" data-close aria-label="">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </header>
+        <div class="settings-body">
+          <nav class="settings-nav">
+            <button class="nav-item is-active" id="nav-launcher"></button>
+            <button class="nav-item" id="nav-about"></button>
+          </nav>
+          <div class="settings-pages">
+            <section id="page-launcher">
+              <div class="group">
+                <div class="group-head" id="group-startup"></div>
+                <label class="switchrow">
+                  <input type="checkbox" id="set-autostart" />
+                  <span class="switch-text">
+                    <span class="switch-title" id="set-autostart-title"></span>
+                    <span class="switch-detail" id="set-autostart-detail"></span>
+                  </span>
+                </label>
+              </div>
+              <div class="group">
+                <div class="group-head" id="group-update"></div>
+                <label class="switchrow">
+                  <input type="checkbox" id="set-autoupdate" />
+                  <span class="switch-text">
+                    <span class="switch-title" id="set-autoupdate-title"></span>
+                    <span class="switch-detail" id="set-autoupdate-detail"></span>
+                  </span>
+                </label>
+              </div>
+              <div class="group">
+                <div class="group-head" id="group-close"></div>
+                <label class="switchrow">
+                  <input type="checkbox" id="set-tray" />
+                  <span class="switch-text">
+                    <span class="switch-title" id="set-tray-title"></span>
+                    <span class="switch-detail" id="set-tray-detail"></span>
+                  </span>
+                </label>
+              </div>
+              <p class="fineprint" id="tray-note" hidden></p>
+            </section>
+
+            <section id="page-about" hidden>
+              <div class="about">
+                <img class="about-logo" src="assets/logo.png" alt="" />
+                <div class="about-name">O824</div>
+                <div class="about-version" id="about-version"></div>
+                <div class="about-tagline" id="about-tagline"></div>
+                <button class="about-repo" id="about-repo"></button>
+                <div class="about-url">github.com/NaloxoneE-Lab/Object824</div>
+                <div class="about-actions">
+                  <button class="btn-quiet" id="about-update"></button>
+                  <button class="btn-quiet" id="about-trust"></button>
+                  <button class="btn-quiet" id="about-copy"></button>
+                  <button class="btn-quiet" id="about-log"></button>
+                </div>
+              </div>
+            </section>
+          </div>
         </div>
       </section>
 
-      <section id="installations" class="list" hidden></section>
-      <section id="findings" class="list" hidden></section>
+      <section class="sheet" id="sheet-details" role="dialog" aria-modal="true" hidden>
+        <header class="sheet-head">
+          <h2 id="details-title"></h2>
+          <button class="icon-btn sheet-x" data-close aria-label="">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </header>
+        <div class="sheet-body" id="details-body"></div>
+        <footer class="sheet-foot">
+          <button class="btn-quiet" id="details-undo" hidden></button>
+          <button class="btn-quiet" id="details-copy"></button>
+          <button class="btn-quiet" id="details-close" data-close></button>
+          <button class="btn-primary" id="details-repair" hidden></button>
+        </footer>
+      </section>
 
-      <!-- §20.3: the safety net is shown before anything moves, and the way out is a
-           button, not a sentence. -->
-      <section id="update-panel" class="confirm" hidden>
-        <p id="update-headline" class="backup"></p>
-        <p id="update-detail"></p>
-        <p id="update-proof" class="detail"></p>
-        <div class="actions">
-          <button id="update-cancel" class="quiet"></button>
-          <button id="update-install" class="primary" hidden></button>
+      <section class="sheet" id="sheet-plan" role="dialog" aria-modal="true" hidden>
+        <header class="sheet-head">
+          <h2 id="plan-title"></h2>
+          <button class="icon-btn sheet-x" data-close aria-label="">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </header>
+        <div class="sheet-body">
+          <p class="backup" id="plan-backup"></p>
+          <p class="steps-heading" id="plan-heading"></p>
+          <ol class="steps" id="plan-steps"></ol>
         </div>
+        <footer class="sheet-foot">
+          <button class="btn-quiet" id="plan-cancel"></button>
+          <button class="btn-primary" id="plan-confirm"></button>
+        </footer>
       </section>
 
-      <section id="trust-panel" class="confirm" hidden>
-        <p id="trust-headline" class="backup"></p>
-        <p id="trust-reason"></p>
-        <p id="trust-check" class="steps-heading"></p>
-        <code id="trust-command" class="command"></code>
-        <p id="trust-note" class="detail"></p>
-        <p id="trust-never" class="never"></p>
-        <div class="actions">
-          <button id="trust-close" class="quiet"></button>
+      <section class="sheet" id="sheet-update" role="dialog" aria-modal="true" hidden>
+        <header class="sheet-head">
+          <h2 id="update-title"></h2>
+          <button class="icon-btn sheet-x" data-close aria-label="">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </header>
+        <div class="sheet-body update-body">
+          <div class="update-mark" id="update-mark"></div>
+          <h3 class="update-headline" id="update-headline"></h3>
+          <p class="update-detail" id="update-detail"></p>
+          <p class="update-proof" id="update-proof"></p>
         </div>
+        <footer class="sheet-foot">
+          <button class="btn-quiet" id="update-cancel"></button>
+          <button class="btn-primary" id="update-install" hidden></button>
+        </footer>
       </section>
 
-      <section id="install-panel" class="confirm" hidden>
-        <p id="install-guidance" class="backup"></p>
-        <ul id="install-steps" class="steps"></ul>
-      </section>
-
-      <section id="confirm-panel" class="confirm" hidden>
-        <p id="backup" class="backup"></p>
-        <p id="steps-heading" class="steps-heading"></p>
-        <ul id="steps" class="steps"></ul>
-        <div class="actions">
-          <button id="confirm-cancel" class="quiet"></button>
-          <button id="confirm-start" class="primary"></button>
+      <section class="sheet" id="sheet-install" role="dialog" aria-modal="true" hidden>
+        <header class="sheet-head">
+          <h2 id="install-title"></h2>
+          <button class="icon-btn sheet-x" data-close aria-label="">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </header>
+        <div class="sheet-body">
+          <p class="install-guidance" id="install-guidance"></p>
+          <div class="install-steps" id="install-steps"></div>
         </div>
+        <footer class="sheet-foot">
+          <button class="btn-primary" data-close id="install-close"></button>
+        </footer>
       </section>
-      <section id="failure" class="failure" hidden></section>
-    </main>
 
-    <footer class="bar">
-      <button id="copy" class="quiet" hidden>Copy diagnostic information</button>
-      <span class="spacer"></span>
-      <span id="status" class="status"></span>
-    </footer>
+      <section class="sheet" id="sheet-trust" role="dialog" aria-modal="true" hidden>
+        <header class="sheet-head">
+          <h2 id="trust-headline"></h2>
+          <button class="icon-btn sheet-x" data-close aria-label="">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </header>
+        <div class="sheet-body">
+          <p id="trust-reason"></p>
+          <p class="steps-heading" id="trust-check"></p>
+          <code class="command" id="trust-command"></code>
+          <p class="fineprint" id="trust-note"></p>
+          <p class="never" id="trust-never"></p>
+        </div>
+        <footer class="sheet-foot">
+          <button class="btn-primary" data-close id="trust-close"></button>
+        </footer>
+      </section>
+
+      <section class="sheet" id="sheet-close" role="dialog" aria-modal="true" hidden>
+        <header class="sheet-head">
+          <h2 id="close-title"></h2>
+          <button class="icon-btn sheet-x" data-close aria-label="">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </header>
+        <div class="sheet-body">
+          <p id="close-reason"></p>
+          <label class="checkline dark">
+            <input type="checkbox" id="close-remember" />
+            <span id="close-remember-label"></span>
+          </label>
+        </div>
+        <footer class="sheet-foot">
+          <button class="btn-quiet" id="close-quit"></button>
+          <button class="btn-primary" id="close-keep"></button>
+        </footer>
+      </section>
+
+      <section class="sheet" id="sheet-installs" role="dialog" aria-modal="true" hidden>
+        <header class="sheet-head">
+          <h2 id="installs-title"></h2>
+          <button class="icon-btn sheet-x" data-close aria-label="">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </header>
+        <div class="sheet-body" id="installs-body"></div>
+      </section>
+    </div>
 
     <script src="app.js"></script>
   </body>

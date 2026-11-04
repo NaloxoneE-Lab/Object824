@@ -1,282 +1,1258 @@
-/* The window's look: quiet, one strong action, nothing decorative enough to be in the way.
+/* The launcher board.
  *
- * The palette is deliberately dull — this is a tool someone opens when something is
- * broken, and a bright UI reads as an advert. */
-:root {
-  color-scheme: light dark;
-  --ink: #10151f;
-  --paper: #f7f8fa;
-  --muted: #5c6573;
-  --line: #dde1e7;
-  --accent: #2d6cdf;
-  --warn: #b4531f;
-  --radius: 12px;
-}
+ * Two ideas hold this together. The left rail is the only dark furniture, so the three
+ * distributions read as the thing you switch between. The stage is deliberately quiet —
+ * grey, a grid, a watermark — because the illustration that will sit on it is not here yet,
+ * and a placeholder that pretends to be art is worse than one that admits it.
+ *
+ * The palette is the reference's: near-black chrome, one acid yellow, and a grey field.
+ */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ink: #eef1f6;
-    --paper: #151a22;
-    --muted: #9aa4b2;
-    --line: #2a323d;
-    --accent: #6f9cf3;
-    --warn: #e08b52;
-  }
+:root {
+  --yellow: #e8e62a;
+  --ink: #17171a;
+  --rail: #141416;
+  --chrome: rgba(23, 23, 26, 0.9);
+  --stage: #c4c4c4;
+  --font: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC",
+    system-ui, sans-serif;
+  --mono: "Cascadia Mono", "Consolas", "SFMono-Regular", ui-monospace, monospace;
 }
 
 * {
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
+html,
 body {
   margin: 0;
-  min-height: 100vh;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+button {
+  font-family: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--yellow);
+  outline-offset: 2px;
+}
+
+.ico {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+
+/* ------------------------------------------------------------------ board */
+
+.app {
+  position: relative;
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  height: 100vh;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--rail);
+}
+
+/* ------------------------------------------------------------------ rail */
+
+.rail {
+  position: relative;
+  z-index: 6;
   display: flex;
   flex-direction: column;
-  background: var(--paper);
-  color: var(--ink);
-  font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
+  align-items: center;
+  padding: 22px 0 18px;
+  background: linear-gradient(180deg, #161618 0%, #121214 100%);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.bar {
+.rail-logo {
+  width: 46px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+}
+
+.rail-logo img {
+  width: 40px;
+  height: auto;
+  display: block;
+  opacity: 0.96;
+}
+
+.tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: auto;
+  margin-bottom: auto;
+  transform: translateY(26px);
+}
+
+.tab {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 0;
+  border-radius: 11px;
+  background: #26262a;
+  cursor: pointer;
+  isolation: isolate;
+}
+
+.tab img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 11px;
+}
+
+/* The ring sits outside the tile so selecting one does not change its size. */
+.tab::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 15px;
+  border: 2px solid transparent;
+  transition: border-color 120ms ease;
+}
+
+.tab:hover::after {
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.tab.is-active::after {
+  border-color: #f2f2f3;
+}
+
+.tab[data-state="absent"] img {
+  filter: grayscale(1) brightness(0.5);
+}
+
+.tab .badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--rail);
+  background: #6b6b72;
+  z-index: 1;
+}
+
+.tab .badge.ok {
+  background: #46c98b;
+}
+
+.tab .badge.attention {
+  background: #f0b429;
+}
+
+.tab .badge.unknown {
+  background: #7c7c84;
+}
+
+.tab .badge.absent {
+  background: #5d5d64;
+}
+
+.rail-foot {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #8a8a92;
+  cursor: pointer;
+}
+
+.rail-foot:hover {
+  background: #232327;
+  color: #f0f0f2;
+}
+
+.rail-foot svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+
+/* ----------------------------------------------------------------- stage */
+
+.stage {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--stage);
+  color: var(--ink);
+}
+
+.art {
+  position: absolute;
+  inset: 0;
+}
+
+.art-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.4) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.4) 1px, transparent 1px);
+  background-size: 46px 46px;
+  /* The grid belongs to the corner the future illustration will grow from, not to the whole
+     board: graph paper under the text reads as a missing background asset. */
+  mask-image: radial-gradient(78% 70% at 16% 4%, #000 0%, rgba(0, 0, 0, 0.35) 48%, transparent 72%);
+  -webkit-mask-image: radial-gradient(78% 70% at 16% 4%, #000 0%, rgba(0, 0, 0, 0.35) 48%, transparent 72%);
+  opacity: 0.45;
+}
+
+.art-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(46% 40% at 82% 8%, rgba(232, 230, 42, 0.05), transparent 70%);
+}
+
+.watermark {
+  position: absolute;
+  left: -12px;
+  bottom: -34px;
+  font-size: 168px;
+  line-height: 0.82;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: rgba(255, 255, 255, 0.25);
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- top bar */
+
+.topbar {
+  position: absolute;
+  top: 17px;
+  right: 20px;
+  z-index: 8;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 20px;
-  border-bottom: 1px solid var(--line);
+  gap: 9px;
 }
 
-footer.bar {
-  border-bottom: none;
-  border-top: 1px solid var(--line);
-  margin-top: auto;
+.chip,
+.round {
+  border: 0;
+  background: var(--chrome);
+  color: #f4f4f5;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: background 120ms ease;
 }
 
-.mark {
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  background: var(--ink);
-  color: var(--paper);
-  border-radius: 8px;
-  padding: 2px 8px;
-  font-size: 13px;
+.chip:hover,
+.round:hover {
+  background: #2c2c31;
 }
 
-.trust,
-.status {
-  color: var(--muted);
+.chip {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 15px 0 12px;
+  border-radius: 999px;
   font-size: 12.5px;
-}
-
-.spacer {
-  flex: 1;
-}
-
-main {
-  padding: 32px 20px;
-  max-width: 720px;
-  width: 100%;
-  margin: 0 auto;
-  display: grid;
-  /* One explicit column that may shrink. A grid's implicit column is sized to
-     max-content, so without this a single wide row pushes the whole page wider than its
-     container — and the right-hand text disappears off the edge. */
-  grid-template-columns: minmax(0, 1fr);
-  gap: 24px;
-}
-
-h1 {
-  font-size: 26px;
-  line-height: 1.25;
-  margin: 0 0 8px;
-}
-
-.reason {
-  color: var(--muted);
-  margin: 0 0 20px;
-  max-width: 56ch;
-}
-
-.primary {
-  font: inherit;
   font-weight: 600;
-  color: #fff;
-  background: var(--accent);
-  border: none;
-  border-radius: var(--radius);
-  padding: 12px 22px;
-  cursor: pointer;
+  letter-spacing: 0.01em;
 }
 
-.primary:hover {
-  filter: brightness(1.06);
+.chip .ico {
+  width: 16px;
+  height: 16px;
 }
 
-.quiet {
-  font: inherit;
-  color: var(--muted);
-  background: none;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 6px 12px;
-  cursor: pointer;
+.chip .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--yellow);
 }
 
-.list {
+.round {
+  width: 38px;
+  height: 38px;
   display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.round .ico {
+  width: 17px;
+  height: 17px;
+}
+
+/* -------------------------------------------------------------- hero copy */
+
+.hero-copy {
+  position: absolute;
+  left: 40px;
+  bottom: 112px;
+  z-index: 4;
+  max-width: 560px;
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
   gap: 10px;
-  /* A grid item's automatic minimum is its content, which lets a long row push the whole
-     column wider than its container. Every level needs the floor removed. */
-  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  color: rgba(20, 20, 22, 0.6);
 }
 
-/* Two lines rather than one: a name on the left and a status on the right needs the
-   status to fit beside the name, and when it does not, it is pushed off the edge. Stacked,
-   there is no horizontal pressure at all, at any window width. */
-.row {
+.state-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8c8c92;
+}
+
+.state-dot.ok {
+  background: #1f9d67;
+}
+
+.state-dot.attention {
+  background: #c2870a;
+}
+
+.state-dot.broken {
+  background: #c2452d;
+}
+
+.version {
+  padding: 2px 8px;
+  border: 1px solid rgba(20, 20, 22, 0.24);
+  border-radius: 999px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+#headline {
+  margin: 12px 0 8px;
+  /* Wide enough that "DeepSeek Harness 0.2.1-rc.3" is one line; narrow enough that a long
+     Chinese sentence breaks at its spaces instead of running under the start button. */
+  max-width: 30ch;
+  font-size: 36px;
+  line-height: 1.14;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  /* Chinese breaks between any two characters by default, which cut "浏览器版" and
+     "没有安装" in half. Latin words still wrap at their spaces. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+#headline.long {
+  font-size: 30px;
+}
+
+#reason {
+  margin: 0;
+  max-width: 60ch;
+  font-size: 13.5px;
+  line-height: 1.62;
+  color: rgba(20, 20, 22, 0.64);
+}
+
+#reason:empty {
+  display: none;
+}
+
+.hero-links {
+  display: flex;
+  gap: 18px;
+  margin-top: 14px;
+}
+
+.text-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #17171a;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* ------------------------------------------------------------------ start */
+
+.launch {
+  position: absolute;
+  right: 30px;
+  bottom: 26px;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.cta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cta {
+  min-width: 178px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  padding: 0 24px 0 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--yellow);
+  color: var(--ink);
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
+}
+
+.cta:hover {
+  filter: brightness(1.045);
+}
+
+.cta:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.cta-badge {
+  width: 50px;
+  height: 50px;
+  margin-right: 12px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
-  text-align: left;
-  font: inherit;
-  color: inherit;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--yellow);
+  flex: none;
+}
+
+.cta-badge .ico {
+  width: 22px;
+  height: 22px;
+}
+
+.cta-badge .ico.play {
+  fill: currentColor;
+  stroke: none;
+}
+
+.menu-toggle {
+  width: 50px;
+  height: 50px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ink);
+  color: #f4f4f5;
+  cursor: pointer;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
+}
+
+.menu-toggle:hover {
+  background: #26262b;
+}
+
+.menu-toggle .ico {
+  width: 20px;
+  height: 20px;
+}
+
+.checkline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: rgba(20, 20, 22, 0.66);
+  cursor: pointer;
+}
+
+.checkline input {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1.5px solid rgba(20, 20, 22, 0.4);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  flex: none;
+}
+
+.checkline input:checked {
+  border-color: var(--yellow);
+  background-color: var(--yellow);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.2 2.2L9.6 3.6' fill='none' stroke='%2317171a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-size: 15px 15px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* ------------------------------------------------------------------- menu */
+
+.menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 12px);
+  width: 270px;
+  padding: 7px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: #232326;
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.36);
+}
+
+.menu-item {
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 8px;
   background: transparent;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  color: #ececee;
+  font-size: 13.5px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item:hover:not(:disabled) {
+  background: #2f2f34;
+}
+
+.menu-item:disabled {
+  color: #77777f;
+  cursor: default;
+}
+
+.menu-item.separated {
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 0 0 8px 8px;
+}
+
+/* ------------------------------------------------------------------ toast */
+
+.toast {
+  position: fixed;
+  left: 104px;
+  bottom: 26px;
+  z-index: 70;
+  max-width: 420px;
+  padding: 10px 16px;
+  border-left: 3px solid var(--yellow);
+  border-radius: 8px;
+  background: #1d1d20;
+  color: #ececee;
+  font-size: 12.5px;
+  line-height: 1.4;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34);
+  animation: rise 140ms ease-out;
+}
+
+.toast.error {
+  border-left-color: #e0563f;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ------------------------------------------------------------------ sheets */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgba(9, 9, 11, 0.34);
+  backdrop-filter: blur(8px);
+  animation: fade 120ms ease-out;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.sheet {
+  width: 740px;
+  max-width: calc(100vw - 96px);
+  max-height: 78vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #232326;
+  color: #ededf0;
+  box-shadow: 0 34px 90px rgba(0, 0, 0, 0.5);
+  animation: lift 140ms ease-out;
+}
+
+@keyframes lift {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+
+.sheet-head {
+  flex: none;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px 0 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.sheet-head h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.head-ico {
+  width: 17px;
+  height: 17px;
+  color: #d8d8dc;
+}
+
+.sheet-x,
+.icon-btn {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #a9a9b0;
+  cursor: pointer;
+}
+
+.sheet-x:hover,
+.icon-btn:hover {
+  background: #303036;
+  color: #ffffff;
+}
+
+.sheet-body {
+  padding: 22px;
+  overflow: auto;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #d9d9de;
+}
+
+.sheet-body p {
+  margin: 0 0 12px;
+}
+
+.sheet-body p:last-child {
+  margin-bottom: 0;
+}
+
+.sheet-body :is(p, code, .install-step) {
+  user-select: text;
+}
+
+.sheet-foot {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.btn-primary {
+  padding: 11px 18px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--yellow);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.05);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.btn-quiet {
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9px;
+  background: transparent;
+  color: #d6d6da;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-quiet:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ---------------------------------------------------------------- settings */
+
+.settings-sheet {
+  width: 760px;
+  height: 478px;
+  max-height: 80vh;
+}
+
+.settings-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 196px minmax(0, 1fr);
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  background: #1c1c1f;
+}
+
+.nav-item {
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #a9a9b0;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nav-item:hover {
+  background: #26262a;
+  color: #ececee;
+}
+
+.nav-item.is-active {
+  background: #333338;
+  color: #ffffff;
+}
+
+/* The initial focus lands on the selected section; a full-strength yellow ring there reads
+   as a second selection rule rather than as focus. */
+.nav-item:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.42);
+  outline-offset: -1px;
+}
+
+.settings-pages {
+  padding: 18px 20px;
+  overflow: auto;
+}
+
+.group {
+  margin-bottom: 12px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #2a2a2e;
+}
+
+.group-head {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.switchrow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
   padding: 14px 16px;
   cursor: pointer;
 }
 
-.row:hover {
-  border-color: var(--accent);
+.switchrow input {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  border: 1.5px solid #6b6b73;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  flex: none;
 }
 
-.detail {
-  color: var(--muted);
+.switchrow input:checked {
+  border-color: var(--yellow);
+  background-color: var(--yellow);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.2 2.2L9.6 3.6' fill='none' stroke='%2317171a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-size: 16px 16px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.switchrow input:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.switchrow input:disabled ~ .switch-text {
+  opacity: 0.55;
+}
+
+.switch-text {
+  display: block;
+}
+
+.switch-title {
+  display: block;
   font-size: 13px;
-  text-align: left;
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
 
-.row > span:first-child {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-weight: 500;
+.switch-detail {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #9a9aa2;
 }
 
-.card {
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--warn);
-  border-radius: var(--radius);
-  padding: 16px 18px;
+.fineprint {
+  margin: 2px 2px 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #9a9aa2;
 }
 
-.card h2 {
-  font-size: 16px;
+.about {
+  padding: 6px 8px;
+  text-align: center;
+}
+
+.about-logo {
+  width: 58px;
+  margin-bottom: 12px;
+}
+
+.about-name {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.about-version {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #9a9aa2;
+}
+
+.about-tagline {
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: #c9c9cf;
+}
+
+.about-repo {
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--yellow);
+  font-size: 12.5px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.about-url {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #77777f;
+  letter-spacing: 0.01em;
+  user-select: text;
+}
+
+.about-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.about-actions .btn-quiet {
+  padding: 9px 12px;
+  font-size: 12px;
+}
+
+/* ----------------------------------------------------------------- details */
+
+.finding {
+  margin-bottom: 10px;
+  padding: 14px 16px;
+  border-left: 3px solid #5f5f67;
+  border-radius: 8px;
+  background: #2a2a2e;
+}
+
+.finding.repairable {
+  border-left-color: var(--yellow);
+}
+
+.finding h3 {
   margin: 0 0 6px;
-}
-
-.card p {
-  margin: 0;
-  color: var(--muted);
-}
-
-.card .next {
-  margin-top: 10px;
-  color: var(--ink);
+  font-size: 13.5px;
   font-weight: 600;
 }
 
-.failure {
-  border: 1px solid var(--warn);
-  border-radius: var(--radius);
-  padding: 16px 18px;
-  color: var(--warn);
+.finding p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #b6b6bd;
 }
 
-/* The confirmation panel: quiet, clearly a stop before something happens. */
-.confirm {
-  /* A grid item's automatic minimum is its content; a long command inside would widen the
-     panel past its column and clip the text rather than wrap it. */
-  min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 18px 20px;
-  background: color-mix(in srgb, var(--accent) 4%, transparent);
+.finding .next {
+  margin-top: 8px;
+  color: var(--yellow);
+  font-weight: 600;
 }
+
+.empty-state {
+  padding: 30px 10px;
+  text-align: center;
+  color: #b6b6bd;
+}
+
+.empty-state .ico {
+  width: 40px;
+  height: 40px;
+  margin-bottom: 12px;
+  color: #46c98b;
+}
+
+.spinner {
+  width: 26px;
+  height: 26px;
+  margin: 22px auto;
+  border: 2.5px solid rgba(255, 255, 255, 0.14);
+  border-top-color: var(--yellow);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* -------------------------------------------------------------------- plan */
 
 .backup {
-  margin: 0 0 12px;
-  font-weight: 600;
+  padding: 11px 14px;
+  border: 1px solid rgba(232, 230, 42, 0.28);
+  border-radius: 8px;
+  background: rgba(232, 230, 42, 0.08);
+  color: #eae9a8;
+  font-size: 12.5px;
 }
 
 .steps-heading {
-  margin: 0 0 6px;
-  color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
+  color: #9a9aa2;
 }
 
 .steps {
-  margin: 0 0 16px;
-  padding-left: 20px;
-  color: var(--ink);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
 }
 
 .steps li {
-  margin: 2px 0;
-}
-
-.actions {
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-}
-
-.actions.inline {
-  justify-content: flex-start;
-  margin-top: 14px;
-}
-
-.link {
-  color: var(--accent);
-  text-decoration: none;
-  align-self: center;
-  font-weight: 600;
-}
-
-.link:hover {
-  text-decoration: underline;
-}
-
-/* The "why does Windows warn" affordance: present, quiet, never shouting. */
-.link-button {
-  margin-left: auto;
-  background: none;
-  border: 0;
-  color: var(--accent);
-  font: inherit;
+  position: relative;
+  padding: 8px 0 8px 34px;
   font-size: 13px;
-  cursor: pointer;
-  padding: 4px 6px;
-  text-decoration: underline;
+  color: #dcdce1;
+  counter-increment: step;
 }
+
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #35353b;
+  color: var(--yellow);
+  font-size: 11px;
+}
+
+/* ------------------------------------------------------------------ update */
+
+.update-body {
+  padding: 30px 32px 26px;
+  text-align: center;
+}
+
+.update-mark {
+  width: 54px;
+  height: 54px;
+  margin: 0 auto 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(232, 230, 42, 0.12);
+  color: var(--yellow);
+}
+
+.update-mark .ico {
+  width: 26px;
+  height: 26px;
+}
+
+.update-headline {
+  margin: 0 0 8px;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.update-detail {
+  margin: 0 auto;
+  max-width: 46ch;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #b6b6bd;
+}
+
+.update-proof {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #8f8f97;
+}
+
+/* ----------------------------------------------------------------- install */
+
+.install-guidance {
+  font-size: 13px;
+  color: #c9c9cf;
+}
+
+.install-step {
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+}
+
+.install-step .label {
+  font-size: 12.5px;
+  color: #c9c9cf;
+}
+
+.install-step code {
+  display: block;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.26);
+  color: var(--yellow);
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.install-step .copy {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  background: transparent;
+  color: #d6d6da;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.install-step .copy:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ------------------------------------------------------------------- trust */
 
 .command {
   display: block;
-  min-width: 0;
-  max-width: 100%;
   margin: 8px 0 12px;
   padding: 10px 12px;
   border-radius: 8px;
-  background: rgba(0, 0, 0, 0.05);
-  font-family: ui-monospace, Consolas, monospace;
+  background: rgba(0, 0, 0, 0.28);
+  color: #d8d8dc;
+  font-family: var(--mono);
   font-size: 12px;
-  overflow-wrap: anywhere;
+  line-height: 1.5;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .never {
-  margin: 12px 0 0;
+  color: var(--yellow);
+  font-size: 12.5px;
   font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- closeline */
+
+.checkline.dark {
+  margin-top: 16px;
+  color: #a9a9b0;
+}
+
+.checkline.dark input {
+  border-color: #5f5f67;
+  background: transparent;
+}
+
+.checkline.dark input:checked {
+  border-color: var(--yellow);
+  background-color: var(--yellow);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.2 2.2L9.6 3.6' fill='none' stroke='%2317171a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-size: 15px 15px;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* ---------------------------------------------------------------- installs */
+
+.install-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 12px;
+  margin-bottom: 8px;
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: #2a2a2e;
+  color: #ededf0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.install-row:hover {
+  border-color: rgba(232, 230, 42, 0.4);
+}
+
+.install-row .name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.install-row .meta {
+  font-size: 11.5px;
+  color: #9a9aa2;
+  text-align: right;
+}
+
+.install-row .path {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: #77777f;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- scrollbar */
+
+.sheet-body::-webkit-scrollbar,
+.settings-pages::-webkit-scrollbar {
+  width: 10px;
+}
+
+.sheet-body::-webkit-scrollbar-thumb,
+.settings-pages::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+  background-color: rgba(255, 255, 255, 0.18);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
 }

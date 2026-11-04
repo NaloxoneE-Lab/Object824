@@ -22,15 +22,49 @@
 #![deny(unsafe_code)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::sync::OnceLock;
 
 use tauri::Emitter;
 use tauri::Manager;
 
-
 use o824_bridge::{Bridge, Options};
 use o824_present::Locale;
 use serde::Serialize;
+
+/// Which language the window speaks.
+///
+/// `LANG` is a Unix habit: a Windows user who double-clicks the program has no LANG at all,
+/// so reading only that variable made a Chinese copy of Windows show an English window. The
+/// Windows UI language is asked first, and `O824_LOCALE` exists so a screenshot can be taken
+/// in either language on one machine.
+static LOCALE: OnceLock<Locale> = OnceLock::new();
+
+#[allow(unsafe_code)]
+fn locale() -> Locale {
+    *LOCALE.get_or_init(|| {
+        if let Some(tag) = std::env::var_os("O824_LOCALE") {
+            return Locale::from_system(tag.to_str());
+        }
+        #[cfg(windows)]
+        {
+            use windows::Win32::Globalization::GetUserDefaultUILanguage;
+            // SAFETY: no arguments, no pointers; the call reports the user's UI language.
+            let language = unsafe { GetUserDefaultUILanguage() };
+            if language & 0x3ff == 0x04 {
+                return Locale::ZhHans;
+            }
+            return Locale::En;
+        }
+        #[cfg(not(windows))]
+        Locale::from_system(std::env::var("LANG").ok().as_deref())
+    })
+}
+
+/// Whether the notification-area icon registered. A window that hides itself with no tray
+/// icon is a process nobody can get back, so the close button has to know.
+static TRAY_OK: AtomicBool = AtomicBool::new(false);
 
 /// What the window asks for when it starts.
 #[derive(Serialize)]
@@ -52,6 +86,8 @@ struct InstallRow {
     kind: String,
     name: String,
     version: String,
+    /// Where it lives, so the window can offer to open the folder.
+    root: String,
     findings: usize,
     repairable: usize,
 }
@@ -108,13 +144,15 @@ struct PlanView {
 /// Undoes the last repair by replaying the journal's record of what it replaced.
 #[tauri::command]
 async fn undo_repair(install_id: String) -> Result<ApplyView, String> {
-    let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
+    let locale = locale();
     let mut bridge = Bridge::start(&kernel_options()).map_err(|error| error.to_string())?;
     let plan = bridge
         .plan(&install_id, "rollback")
         .map_err(|error| error.to_string())?;
     bridge.apply(&plan).map_err(|error| error.to_string())?;
-    let after = bridge.doctor(&install_id).map_err(|error| error.to_string())?;
+    let after = bridge
+        .doctor(&install_id)
+        .map_err(|error| error.to_string())?;
     let _ = bridge.close();
     let findings = after["findings"].as_array().map(Vec::len).unwrap_or(0);
     let copy = o824_present::undone_copy(locale);
@@ -151,13 +189,6 @@ struct ApplyView {
 /// someone open Task Manager; the directory and the OS error are what make it actionable.
 static LAST_PROBLEM: Mutex<Option<String>> = Mutex::new(None);
 
-fn remember_problem(text: String) {
-    log_line(&format!("problem: {text}"));
-    if let Ok(mut slot) = LAST_PROBLEM.lock() {
-        *slot = Some(text);
-    }
-}
-
 fn last_problem() -> String {
     LAST_PROBLEM
         .lock()
@@ -171,12 +202,12 @@ fn last_problem() -> String {
 /// A window that dies before it draws anything leaves no console and no event log entry a
 /// person can find, so the first thing this program does is make sure the next crash is
 /// readable. Every line is flushed: the process may not get to run a destructor.
-fn log_line(line: &str) {
-    use std::io::Write as _;
-    // Candidates in order of how likely they are to be writable for the account that
-    // double-clicked: next to the program (it lives in a folder the user owns),
-    // %LOCALAPPDATA%, then %TEMP%. A file, not a directory — creating a file succeeds in
-    // places where creating a folder is denied.
+/// Where this program may write its log, most likely first.
+///
+/// Next to the program (it lives in a folder the user owns), then `%LOCALAPPDATA%`, then
+/// `%TEMP%`. A file, not a directory — creating a file succeeds in places where creating a
+/// folder is denied.
+fn log_candidates() -> Vec<std::path::PathBuf> {
     let mut candidates: Vec<std::path::PathBuf> = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
         if let Some(directory) = exe.parent() {
@@ -188,7 +219,17 @@ fn log_line(line: &str) {
             candidates.push(std::path::PathBuf::from(base).join("O824-gui.log"));
         }
     }
-    for path in candidates {
+    candidates
+}
+
+/// The log file that exists, so "open the log" opens something rather than a folder.
+fn existing_log() -> Option<std::path::PathBuf> {
+    log_candidates().into_iter().find(|path| path.is_file())
+}
+
+fn log_line(line: &str) {
+    use std::io::Write as _;
+    for path in log_candidates() {
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -254,12 +295,6 @@ fn main() {
         log_line("another window is open; brought it to the front and left");
         return;
     }
-    log_line("=== start ===");
-    log_token();
-    if !only_instance() {
-        log_line("another window is open; brought it to the front and left");
-        return;
-    }
     log_line(&format!(
         "exe={:?} cwd={:?}",
         std::env::current_exe().ok(),
@@ -275,75 +310,113 @@ fn main() {
         ));
     }));
     // Before Tauri starts: the data directory it will use has to be ours, not one an
-    // elevated run left behind.
-    prepare_webview_data();
+    // elevated run left behind. One choice, used for both the environment variable and the
+    // builder option — two different folders is how a working window fails with
+    // "the resource is in use" for no visible reason.
+    let data_directory = usable_data_directory();
+    if let Some(directory) = &data_directory {
+        std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", directory);
+    }
     log_line(&format!(
         "kernel={:?} webview_data={:?}",
         resolve_kernel(),
         std::env::var_os("WEBVIEW2_USER_DATA_FOLDER")
     ));
-
-    let data_directory = usable_data_directory();
     let started = std::panic::catch_unwind(|| {
         tauri::Builder::default()
-        .setup(move |app| {
-            // §7.5: the window is created here rather than by the config because its
-            // browser data directory has to be a path this account can actually write.
-            // `webview2_user_data_folder` is not consulted by the runtime — the directory
-            // is passed to WebView2 explicitly, which is why it has to be set here.
-            let url = if let Ok(mode) = std::env::var("O824_GUI_AUTOREPAIR") {
-                let mode = match mode.as_str() {
-                    "slow" => "slow",
-                    "hold" => "hold",
-                    _ => "1",
+            .setup(move |app| {
+                // §7.5: the window is created here rather than by the config because its
+                // browser data directory has to be a path this account can actually write.
+                // `webview2_user_data_folder` is not consulted by the runtime — the directory
+                // is passed to WebView2 explicitly, which is why it has to be set here.
+                // The switches take the window straight to a state that cannot be produced with
+                // a mouse — an empty machine, a verification dialog, the settings page — so each
+                // screen can be photographed, and so a screenshot is reproducible.
+                let mut query: Vec<String> = Vec::new();
+                if let Ok(mode) = std::env::var("O824_GUI_AUTOREPAIR") {
+                    let mode = match mode.as_str() {
+                        "slow" => "slow",
+                        "hold" => "hold",
+                        _ => "1",
+                    };
+                    query.push(format!("autorepair={mode}"));
+                }
+                for (variable, key) in [
+                    ("O824_GUI_UPDATE", "update"),
+                    ("O824_GUI_TRUST", "trust"),
+                    ("O824_GUI_EMPTY", "empty"),
+                    ("O824_GUI_GUIDE", "guide"),
+                    ("O824_GUI_SETTINGS", "settings"),
+                    ("O824_GUI_MENU", "menu"),
+                    ("O824_GUI_DETAILS", "details"),
+                    ("O824_GUI_ABOUT", "about"),
+                ] {
+                    if std::env::var_os(variable).is_some() {
+                        query.push(format!("{key}=1"));
+                    }
+                }
+                // Free-form query for a screenshot of an arbitrary state (`kind=web`), kept
+                // separate from the named switches so it cannot change what a named one means.
+                if let Ok(extra) = std::env::var("O824_GUI_QUERY") {
+                    let extra = extra.trim_start_matches('?');
+                    if !extra.is_empty() {
+                        query.push(extra.to_owned());
+                    }
+                }
+                let url = if query.is_empty() {
+                    tauri::WebviewUrl::App("index.html".into())
+                } else {
+                    tauri::WebviewUrl::App(format!("index.html?{}", query.join("&")).into())
                 };
-                tauri::WebviewUrl::App(format!("index.html?autorepair={mode}").into())
-            } else if std::env::var_os("O824_GUI_UPDATE").is_some() {
-                tauri::WebviewUrl::App("index.html?update=1".into())
-            } else if std::env::var_os("O824_GUI_TRUST").is_some() {
-                tauri::WebviewUrl::App("index.html?trust=1".into())
-            } else if std::env::var_os("O824_GUI_EMPTY").is_some() {
-                let guide = if std::env::var_os("O824_GUI_GUIDE").is_some() { "&guide=1" } else { "" };
-                tauri::WebviewUrl::App(format!("index.html?empty=1{guide}").into())
-            } else {
-                tauri::WebviewUrl::App("index.html".into())
-            };
-            let mut builder = tauri::WebviewWindowBuilder::new(app, "main", url)
-                .title("O824")
-                .inner_size(880.0, 640.0)
-                .min_inner_size(640.0, 480.0)
-                .center();
-            if let Some(directory) = data_directory.clone() {
-                builder = builder.data_directory(directory);
-            }
-            builder.build()?;
-            // Best effort: a machine that refuses the icon should not stop the window.
-            if let Err(error) = build_tray(app) {
-                log_line(&format!("tray: not created: {error}"));
-            }
-            // No tray: on this machine the shell refuses every registration (see
-            // docs/P3-STATUS.md). Closing the window quits, which is what the window's own
-            // close button promises.
-            Ok(())
-        })
-        .manage(Kernel(Mutex::new(None)))
-        .manage(PendingPlan::default())
-        .invoke_handler(tauri::generate_handler![
-            list,
-            checking,
-            diagnose,
-            summarize,
-            repair_plan,
-            repair_apply,
-            undo_repair,
-            form_action,
-            install_help,
-            trust_help,
-            update_check,
-            update_apply,
-            quit_now
-        ])
-        .build(tauri::generate_context!())
+                let mut builder = tauri::WebviewWindowBuilder::new(app, "main", url)
+                    .title("O824")
+                    .inner_size(1180.0, 666.0)
+                    // The window draws its own title bar; a launcher is a fixed board, not a
+                    // document, so there is nothing to gain from letting it be resized into a
+                    // shape the layout was not designed for.
+                    .decorations(false)
+                    .resizable(false)
+                    .transparent(true)
+                    .center();
+                if let Some(directory) = data_directory.clone() {
+                    builder = builder.data_directory(directory);
+                }
+                builder.build()?;
+                // Best effort: a machine that refuses the icon should not stop the window.
+                match build_tray(app) {
+                    Ok(()) => TRAY_OK.store(true, Ordering::Relaxed),
+                    Err(error) => log_line(&format!("tray: not created: {error}")),
+                }
+                Ok(())
+            })
+            .manage(Kernel(Mutex::new(None)))
+            .manage(PendingPlan::default())
+            .invoke_handler(tauri::generate_handler![
+                list,
+                checking,
+                diagnose,
+                summarize,
+                repair_plan,
+                repair_apply,
+                undo_repair,
+                form_action,
+                install_help,
+                trust_help,
+                update_check,
+                update_apply,
+                quit_now,
+                chrome,
+                absent,
+                shell_info,
+                window_action,
+                set_autostart,
+                create_shortcut,
+                clear_cache,
+                open_log,
+                open_install_dir,
+                open_url
+            ])
+            .build(tauri::generate_context!())
     });
 
     // §7.4: a window that cannot start must say where the command line is, because the
@@ -392,8 +465,26 @@ fn usable_data_directory() -> Option<std::path::PathBuf> {
     for directory in candidates {
         match std::fs::create_dir_all(&directory) {
             Ok(()) => {
-                log_line(&format!("webview data dir ready: {}", directory.display()));
-                return Some(directory);
+                // A directory can exist and still refuse everything inside it: a folder made
+                // by another account or another integrity level answers `create_dir_all` with
+                // success and then fails WebView2 with a misleading "resource in use". The
+                // only proof that it is usable is writing a byte into it.
+                let probe = directory.join("o824-write-probe.tmp");
+                match std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&probe)
+                {
+                    Ok(_) => {
+                        let _ = std::fs::remove_file(&probe);
+                        log_line(&format!("webview data dir ready: {}", directory.display()));
+                        return Some(directory);
+                    }
+                    Err(error) => log_line(&format!(
+                        "webview data dir FAILED: {} (not writable: {error})",
+                        directory.display()
+                    )),
+                }
             }
             Err(error) => log_line(&format!(
                 "webview data dir FAILED: {} ({error})",
@@ -405,52 +496,6 @@ fn usable_data_directory() -> Option<std::path::PathBuf> {
     None
 }
 
-fn prepare_webview_data() {
-    // More than one candidate, in order: a folder this account owns, then the temp
-    // directory, then WebView2's own default. An intermediate directory created by another
-    // account is what broke the first attempt, and a single hard-coded path is one more
-    // thing that can be wrong on one machine.
-    let mut candidates = Vec::new();
-    for variable in ["LOCALAPPDATA", "TEMP"] {
-        if let Some(base) = std::env::var_os(variable) {
-            candidates.push(std::path::PathBuf::from(base).join("O824-webview2"));
-        }
-    }
-    for directory in candidates {
-        // Everything Windows can tell us about the target before we try: "access denied"
-        // arrives for a file where a directory was expected, for a missing parent, and for a
-        // genuinely forbidden path, and the three have different fixes.
-        let parent = directory.parent().map(|path| path.to_path_buf());
-        log_line(&format!(
-            "data dir probe: target={} exists={:?} parent={:?} parent_exists={:?} parent_writable={:?}",
-            directory.display(),
-            std::fs::metadata(&directory).map(|meta| meta.is_dir()),
-            parent.as_ref().map(|path| path.display().to_string()),
-            parent.as_ref().map(|path| path.exists()),
-            parent.as_ref().map(|path| {
-                std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(path.join("o824-write-probe.tmp"))
-                    .map(|_| true)
-                    .unwrap_or(false)
-            })
-        ));
-        match std::fs::create_dir_all(&directory) {
-            Ok(()) => {
-                log_line(&format!("webview data dir ready: {}", directory.display()));
-                std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", &directory);
-                return;
-            }
-            Err(error) => remember_problem(format!(
-                "cannot use {} as the browser data folder ({error})",
-                directory.display()
-            )),
-        }
-    }
-    log_line("webview data dir: none usable, leaving the default");
-}
-
 /// The installations on this machine, without diagnosing them.
 ///
 /// Discovery is 95 ms; a diagnosis is 3.7-5.4 s on a real machine, because it walks every
@@ -459,8 +504,11 @@ fn prepare_webview_data() {
 #[tauri::command]
 async fn list(kernel: tauri::State<'_, Kernel>) -> Result<Vec<InstallRow>, String> {
     let started = std::time::Instant::now();
-    let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
-    let mut guard = kernel.0.lock().map_err(|_| "the kernel handle is poisoned")?;
+    let locale = locale();
+    let mut guard = kernel
+        .0
+        .lock()
+        .map_err(|_| "the kernel handle is poisoned")?;
     let bridge = match guard.as_mut() {
         Some(bridge) => bridge,
         None => {
@@ -469,7 +517,11 @@ async fn list(kernel: tauri::State<'_, Kernel>) -> Result<Vec<InstallRow>, Strin
         }
     };
     let installs = bridge.discover().map_err(|error| error.to_string())?;
-    log_line(&format!("list: {} installs in {:?}", installs.len(), started.elapsed()));
+    log_line(&format!(
+        "list: {} installs in {:?}",
+        installs.len(),
+        started.elapsed()
+    ));
     Ok(installs
         .into_iter()
         .map(|install| InstallRow {
@@ -477,6 +529,7 @@ async fn list(kernel: tauri::State<'_, Kernel>) -> Result<Vec<InstallRow>, Strin
             kind: install.kind.clone(),
             name: o824_present::form_name(&install.kind, locale),
             version: install.version,
+            root: install.root,
             findings: 0,
             repairable: 0,
         })
@@ -486,11 +539,10 @@ async fn list(kernel: tauri::State<'_, Kernel>) -> Result<Vec<InstallRow>, Strin
 /// The sentence group for "still checking", so the window is never blank.
 #[tauri::command]
 fn checking(locale_tag: Option<String>) -> Screen {
-    let locale = Locale::from_system(
-        locale_tag
-            .as_deref()
-            .or(std::env::var("LANG").ok().as_deref()),
-    );
+    let locale = match locale_tag.as_deref() {
+        Some(tag) => Locale::from_system(Some(tag)),
+        None => locale(),
+    };
     let copy = o824_present::checking_copy(locale);
     Screen {
         headline: copy.headline.clone(),
@@ -516,7 +568,8 @@ fn update_base() -> String {
 /// signature or hashes do not match, and a second implementation here would be a second thing
 /// to get wrong.
 fn run_kernel(args: &[&str]) -> Result<(i32, String, String), String> {
-    let program = resolve_kernel().ok_or_else(|| "the kernel was not found next to the window".to_owned())?;
+    let program =
+        resolve_kernel().ok_or_else(|| "the kernel was not found next to the window".to_owned())?;
     let output = std::process::Command::new(&program)
         .args(args)
         .output()
@@ -569,7 +622,11 @@ async fn update_check() -> Result<UpdateView, String> {
     log_line(&format!("update: kernel exited {code}"));
 
     if code != 0 {
-        return Err(if stderr.trim().is_empty() { stdout } else { stderr });
+        return Err(if stderr.trim().is_empty() {
+            stdout
+        } else {
+            stderr
+        });
     }
 
     // Read back what the manifest said, so the window can show the evidence it is acting on.
@@ -600,6 +657,123 @@ fn quit_now(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+// ---------------------------------------------------------------------------
+// The shell: its labels, its window buttons, and the conveniences behind the
+// start control's menu. None of these decide anything about a machine; they
+// either fetch copy or do the small thing their name says.
+
+#[tauri::command]
+fn chrome() -> o824_present::Chrome {
+    o824_present::chrome(locale())
+}
+
+/// The first screen for a distribution this machine does not have.
+#[tauri::command]
+fn absent(kind: String) -> o824_present::Copy {
+    o824_present::absent_copy(&kind, locale())
+}
+
+/// Facts the shell needs once at start, none of which belong in the copy crate.
+#[derive(Serialize)]
+struct ShellInfo {
+    /// The launcher's own version, shown on the About page.
+    version: String,
+    /// Whether closing the window can hide it to a tray icon that actually exists.
+    tray: bool,
+    /// Whether the launcher starts with Windows.
+    autostart: bool,
+    /// The log file, when one has been written.
+    log_path: Option<String>,
+}
+
+#[tauri::command]
+fn shell_info() -> ShellInfo {
+    ShellInfo {
+        version: o824_version::VERSION.to_owned(),
+        tray: TRAY_OK.load(Ordering::Relaxed),
+        autostart: autostart_is_enabled(),
+        log_path: existing_log().map(|path| path.display().to_string()),
+    }
+}
+
+/// Minimize, hide, or quit — the three things a custom title bar can ask for.
+#[tauri::command]
+fn window_action(app: tauri::AppHandle, action: String) -> Result<(), String> {
+    match action.as_str() {
+        "minimize" => app
+            .get_webview_window("main")
+            .ok_or_else(|| "the window is gone".to_owned())?
+            .minimize()
+            .map_err(|error| error.to_string()),
+        "hide" => app
+            .get_webview_window("main")
+            .ok_or_else(|| "the window is gone".to_owned())?
+            .hide()
+            .map_err(|error| error.to_string()),
+        "quit" => {
+            log_line("window: quit from the title bar");
+            app.exit(0);
+            Ok(())
+        }
+        other => Err(format!("window_action: unknown action {other:?}")),
+    }
+}
+
+/// Writes or removes the per-user autostart entry, and reports what the registry says now.
+///
+/// A failed write is reported rather than assumed: the switch in the window must show the
+/// machine's state, not the state the click hoped for.
+#[tauri::command]
+fn set_autostart(enabled: bool) -> Result<bool, String> {
+    autostart_set(enabled)?;
+    let now = autostart_is_enabled();
+    log_line(&format!("autostart: requested {enabled}, now {now}"));
+    Ok(now)
+}
+
+#[tauri::command]
+fn create_shortcut() -> Result<(), String> {
+    desktop_shortcut()
+}
+
+#[tauri::command]
+fn clear_cache() -> Result<(), String> {
+    let staged = o824_install::default_directory().join("staged");
+    if staged.is_dir() {
+        std::fs::remove_dir_all(&staged)
+            .map_err(|error| format!("could not clear {}: {error}", staged.display()))?;
+    }
+    log_line("update: cache cleared");
+    Ok(())
+}
+
+#[tauri::command]
+fn open_log() -> Result<(), String> {
+    let path = existing_log().ok_or_else(|| "no log file has been written yet".to_owned())?;
+    shell_open(&path.display().to_string())
+}
+
+#[tauri::command]
+async fn open_install_dir(install_id: String) -> Result<(), String> {
+    let mut bridge = Bridge::start(&kernel_options()).map_err(|error| error.to_string())?;
+    let installs = bridge.discover().map_err(|error| error.to_string())?;
+    let _ = bridge.close();
+    let install = installs
+        .into_iter()
+        .find(|install| install.install_id == install_id)
+        .ok_or_else(|| format!("no installation has id {install_id}"))?;
+    shell_open(&install.root)
+}
+
+/// Opens a link in the user's browser rather than navigating the window away from itself.
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("only http(s) links can be opened".to_owned());
+    }
+    shell_open(&url)
+}
+
 /// Applies the staged release and lets the kernel restart the window.
 #[tauri::command]
 async fn update_apply(staged_dir: String) -> Result<String, String> {
@@ -614,7 +788,11 @@ async fn update_apply(staged_dir: String) -> Result<String, String> {
         "--yes",
     ])?;
     if code != 0 {
-        return Err(if stderr.trim().is_empty() { stdout } else { stderr });
+        return Err(if stderr.trim().is_empty() {
+            stdout
+        } else {
+            stderr
+        });
     }
     log_line("update: swap scheduled");
     Ok(stdout.trim().to_owned())
@@ -626,7 +804,7 @@ async fn update_apply(staged_dir: String) -> Result<String, String> {
 /// verify what you got — and never suggests turning a protection off.
 #[tauri::command]
 fn trust_help() -> o824_present::TrustHelp {
-    let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
+    let locale = locale();
     o824_present::trust_help(locale)
 }
 
@@ -636,7 +814,7 @@ fn trust_help() -> o824_present::TrustHelp {
 /// behalf, so this returns words and commands, never an action that changes the machine.
 #[tauri::command]
 fn install_help() -> InstallHelp {
-    let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
+    let locale = locale();
     let (guidance, steps) = o824_present::install_guidance(locale);
     InstallHelp {
         guidance,
@@ -674,7 +852,7 @@ struct InstallHelp {
 /// same path a repair takes, with no second implementation to drift.
 #[tauri::command]
 async fn form_action(install_id: String, action: String) -> Result<RunningView, String> {
-    let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
+    let locale = locale();
     // `labels` is not an action on the machine; it is how the page gets the words for the
     // two buttons without carrying a second copy of the catalog in JavaScript.
     if action == "labels" {
@@ -711,13 +889,17 @@ async fn form_action(install_id: String, action: String) -> Result<RunningView, 
     let record = o824_state::load(&state_path)
         .ok()
         .and_then(|state| state.processes.get(&install_id).cloned());
-    let url = record.as_ref().and_then(|record| {
-        o824_formproc::url_from_log(std::path::Path::new(&record.log_path))
-    });
+    let url = record
+        .as_ref()
+        .and_then(|record| o824_formproc::url_from_log(std::path::Path::new(&record.log_path)));
     let running = record.is_some();
 
     let message = if action == "start" {
-        if running { "started" } else { "not started" }
+        if running {
+            "started"
+        } else {
+            "not started"
+        }
     } else if running {
         "still running"
     } else {
@@ -741,7 +923,7 @@ async fn repair_plan(
     install_id: String,
     action: Option<String>,
 ) -> Result<PlanView, String> {
-    let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
+    let locale = locale();
     let mut bridge = Bridge::start(&kernel_options()).map_err(|error| error.to_string())?;
     let action = action.unwrap_or_else(|| "repair".to_owned());
     let plan = bridge
@@ -787,7 +969,7 @@ async fn repair_apply(
     pending: tauri::State<'_, PendingPlan>,
     install_id: String,
 ) -> Result<ApplyView, String> {
-    let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
+    let locale = locale();
     let plan = pending
         .0
         .lock()
@@ -853,7 +1035,7 @@ fn summarize(
     if let Some(layout) = layout {
         log_line(&format!("layout: {layout}"));
     }
-    let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
+    let locale = locale();
     let state = o824_present::first_use(&installs, locale);
     let copy = state.copy().clone();
     Screen {
@@ -871,7 +1053,7 @@ async fn diagnose(
     kernel: tauri::State<'_, Kernel>,
     install_id: String,
 ) -> Result<Vec<FoundRow>, String> {
-    let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
+    let locale = locale();
     // Its own kernel, so three diagnoses run at the same time instead of queueing behind
     // one another: they are independent questions and each costs seconds.
     let mut own = Bridge::start(&kernel_options()).map_err(|error| error.to_string())?;
@@ -921,7 +1103,6 @@ struct FoundRow {
 /// was built from, then `PATH`. A window that cannot find its kernel says so and points at
 /// the command line rather than guessing.
 
-
 /// Records which kind of process this is: a tray icon is refused to a restricted token, and
 /// knowing that from the log saves another round of guessing.
 #[allow(unsafe_code)]
@@ -960,7 +1141,6 @@ fn log_token() {
 #[cfg(not(windows))]
 fn log_token() {}
 
-
 /// The notification-area icon, with the three things it is for.
 ///
 /// Reinstated after the reason it never appeared was found: files inside the DSH workspace
@@ -979,9 +1159,10 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &updates, &quit])?;
 
-    let icon = app.default_window_icon().cloned().ok_or_else(|| {
-        tauri::Error::AssetNotFound("the window icon is missing".to_owned())
-    })?;
+    let icon = app
+        .default_window_icon()
+        .cloned()
+        .ok_or_else(|| tauri::Error::AssetNotFound("the window icon is missing".to_owned()))?;
     log_line(&format!("tray: icon {}x{}", icon.width(), icon.height()));
 
     TrayIconBuilder::new()
@@ -1025,19 +1206,29 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
-
 /// Where the kernel should look, when this window is being exercised against a fixture.
 ///
 /// `O824_ROOT` exists so the whole window — not just the protocol underneath it — can be run
 /// against a broken tree. A test that repairs the developer's own DSH is a test nobody dares
 /// run twice.
 fn kernel_options() -> Options {
-    let root = std::env::var_os("O824_ROOT").map(std::path::PathBuf::from);
+    use std::path::PathBuf;
+
+    let root = std::env::var_os("O824_ROOT").map(PathBuf::from);
+    // The laboratory trees keep the program files, the settings home and the state apart
+    // (`f03/app`, `f03/home`, `f03/data`). One variable could only ever describe one of them,
+    // so each has its own, and the old single-variable behaviour is the default.
+    let home = std::env::var_os("O824_HOME")
+        .map(PathBuf::from)
+        .or_else(|| root.clone());
+    let data_root = std::env::var_os("O824_DATA")
+        .map(PathBuf::from)
+        .or_else(|| root.clone().map(|path| path.join("data")));
     Options {
         program: resolve_kernel(),
-        root: root.clone(),
-        home: root.clone(),
-        data_root: root.map(|path| path.join("data")),
+        root,
+        home,
+        data_root,
     }
 }
 
@@ -1057,7 +1248,10 @@ fn resolve_kernel() -> Option<std::path::PathBuf> {
     }
     // Development layout: apps/o824-gui/target/debug/o824-gui.exe → ../../target/<profile>/o824.exe
     let mut directory = exe.parent()?.to_path_buf();
-    for _ in 0..4 {
+    // Six levels: target/release → target → o824-gui → apps → repository root covers the
+    // development layout as well as the packaged one, so a deleted copy beside the window
+    // does not turn into "o824: program not found".
+    for _ in 0..6 {
         for profile in ["release", "debug"] {
             for layout in [vec![profile], vec!["target", profile]] {
                 let mut candidate = directory.clone();
@@ -1073,6 +1267,185 @@ fn resolve_kernel() -> Option<std::path::PathBuf> {
         directory = directory.parent()?.to_path_buf();
     }
     Some(PathBuf::from("o824"))
+}
+
+/// Opens a file, a folder, or a link with whatever the user has associated with it.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn shell_open(target: &str) -> Result<(), String> {
+    use windows::core::{HSTRING, PCWSTR};
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let verb = HSTRING::from("open");
+    let file = HSTRING::from(target);
+    // SAFETY: both strings outlive the call, and the other three arguments are null.
+    let result = unsafe {
+        ShellExecuteW(
+            None,
+            &verb,
+            &file,
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    // ShellExecute's documented success values start at 33; anything at or below 32 is an
+    // error code disguised as a handle.
+    if result.0 as isize > 32 {
+        Ok(())
+    } else {
+        Err(format!(
+            "could not open {target} (ShellExecute returned {})",
+            result.0 as isize
+        ))
+    }
+}
+
+#[cfg(not(windows))]
+fn shell_open(_target: &str) -> Result<(), String> {
+    Err("opening a path is only implemented on Windows".to_owned())
+}
+
+/// The per-user `Run` entry, which is the documented way to start at sign-in without a task.
+///
+/// `HKEY_CURRENT_USER` means no elevation, and no administrator ever has to be involved in
+/// turning this on or off.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn autostart_is_enabled() -> bool {
+    use windows::core::w;
+    use windows::Win32::Foundation::ERROR_SUCCESS;
+    use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_SZ};
+
+    let mut size = 0u32;
+    // SAFETY: only the size out-parameter is written; no buffer is passed on this call.
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            w!("Software\\Microsoft\\Windows\\CurrentVersion\\Run"),
+            w!("O824"),
+            RRF_RT_REG_SZ,
+            None,
+            None,
+            Some(&mut size),
+        )
+    };
+    status == ERROR_SUCCESS && size > 0
+}
+
+#[cfg(not(windows))]
+fn autostart_is_enabled() -> bool {
+    false
+}
+
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn autostart_set(enabled: bool) -> Result<(), String> {
+    use windows::core::{w, HSTRING};
+    use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
+    use windows::Win32::System::Registry::{
+        RegDeleteKeyValueW, RegSetKeyValueW, HKEY_CURRENT_USER, REG_SZ,
+    };
+
+    let key = w!("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
+    let name = w!("O824");
+    // SAFETY: every pointer is a live local; the key and value names are static.
+    unsafe {
+        if enabled {
+            let exe = std::env::current_exe()
+                .map_err(|error| format!("cannot find this program: {error}"))?;
+            let command = HSTRING::from(format!("\"{}\"", exe.display()));
+            let mut wide: Vec<u16> = command.as_wide().to_vec();
+            wide.push(0);
+            let bytes = (wide.len() * 2) as u32;
+            let status = RegSetKeyValueW(
+                HKEY_CURRENT_USER,
+                key,
+                name,
+                REG_SZ.0,
+                Some(wide.as_ptr() as *const _),
+                bytes,
+            );
+            if status != ERROR_SUCCESS {
+                return Err(format!(
+                    "the autostart entry could not be written ({})",
+                    status.0
+                ));
+            }
+        } else {
+            let status = RegDeleteKeyValueW(HKEY_CURRENT_USER, key, name);
+            if status != ERROR_SUCCESS && status != ERROR_FILE_NOT_FOUND {
+                return Err(format!(
+                    "the autostart entry could not be removed ({})",
+                    status.0
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn autostart_set(_enabled: bool) -> Result<(), String> {
+    Err("autostart is only implemented on Windows".to_owned())
+}
+
+/// Puts an O824 shortcut on the desktop.
+///
+/// The `.lnk` format is written by `WScript.Shell` rather than by hand: a shortcut has an
+/// item identifier list, a link-info block and a path block, and hand-rolling those is a
+/// week of testing for a file the shell already knows how to write.
+#[cfg(windows)]
+fn desktop_shortcut() -> Result<(), String> {
+    use std::os::windows::process::CommandExt as _;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    let exe =
+        std::env::current_exe().map_err(|error| format!("cannot find this program: {error}"))?;
+    let directory = exe
+        .parent()
+        .ok_or_else(|| "this program has no folder".to_owned())?;
+    let quote = |value: &str| value.replace('\'', "''");
+    let exe_text = quote(&exe.display().to_string());
+    let directory_text = quote(&directory.display().to_string());
+    let icon_text = quote(&format!("{},0", exe.display()));
+    let script = format!(
+        "$p = [Environment]::GetFolderPath('Desktop'); \
+         $s = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $p 'O824.lnk')); \
+         $s.TargetPath = '{exe_text}'; \
+         $s.WorkingDirectory = '{directory_text}'; \
+         $s.IconLocation = '{icon_text}'; \
+         $s.Save()"
+    );
+    let output = std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            &script,
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|error| format!("cannot run PowerShell: {error}"))?;
+    if output.status.success() {
+        log_line("shortcut: created on the desktop");
+        Ok(())
+    } else {
+        let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        Err(if detail.is_empty() {
+            "the shortcut could not be created".to_owned()
+        } else {
+            detail
+        })
+    }
+}
+
+#[cfg(not(windows))]
+fn desktop_shortcut() -> Result<(), String> {
+    Err("shortcuts are only implemented on Windows".to_owned())
 }
 
 /// Says, in a native box, that the window could not start and where the command line is.
