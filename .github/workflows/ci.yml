@@ -25,10 +25,16 @@ jobs:
       - name: release key path
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           cargo build --bin o824
           $key = & ./target/debug/o824.exe manifest-keygen
           $public = ($key | Select-String 'public key: (\w+)').Matches[0].Groups[1].Value
+          if ($public.Length -ne 64) { Write-Output "::error::no key came out of manifest-keygen"; exit 1 }
+          # `option_env!` is a compile-time read, and a warm cache can satisfy the build
+          # without recompiling — which would leave a keyless binary and make this step
+          # prove nothing. Cleaning the crate that holds the constant forces the question.
           $env:O824_RELEASE_KEY = $public
+          cargo clean -p o824-manifest
           cargo build --bin o824
           $manifest = ".ci-manifest"
           New-Item -ItemType Directory -Force -Path $manifest | Out-Null
@@ -36,9 +42,15 @@ jobs:
           $other = ".ci-other.hex"
           & ./target/debug/o824.exe manifest-keygen --out $other | Out-Null
           & ./target/debug/o824.exe manifest --root $manifest --out (Join-Path $manifest "manifest.json") --version 9.9.9 --key-file $other | Out-Null
-          & ./target/debug/o824.exe update --check --manifest (Join-Path $manifest "manifest.json") --version 0.1.0
-          if ($LASTEXITCODE -ne 5) {
-            Write-Output "::error::a manifest signed by another key must exit 5, got $LASTEXITCODE"
+          $verdict = & ./target/debug/o824.exe update --check --manifest (Join-Path $manifest "manifest.json") --version 0.1.0 2>&1
+          $code = $LASTEXITCODE
+          $verdict | ForEach-Object { Write-Output $_ }
+          # Written where a failure can be read without an authenticated log download: the
+          # step summary is rendered on the public run page.
+          $summary = "release key step: exit $code`n`n" + ($verdict -join "`n")
+          if ($env:GITHUB_STEP_SUMMARY) { $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8 }
+          if ($code -ne 5) {
+            Write-Output "::error::a manifest signed by another key must exit 5, got $code"
             exit 1
           }
           Write-Output "release key path: a foreign signature was refused with exit 5"
