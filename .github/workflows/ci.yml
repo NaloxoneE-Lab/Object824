@@ -25,40 +25,54 @@ jobs:
       - name: release key path
         shell: pwsh
         run: |
-          $ErrorActionPreference = "Stop"
-          # A non-zero exit is the answer this step is looking for (5 means "refused", which
-          # is correct). PowerShell on the runner treats a native command's non-zero exit as a
-          # terminating error, so the check would never run — set that behaviour off and read
-          # `$LASTEXITCODE` explicitly instead.
+          # Every command is checked on its own and names itself if it fails: an earlier
+          # version of this step reported only "exit code 1" and cost three runs of guessing.
+          $ErrorActionPreference = "Continue"
           $PSNativeCommandUseErrorActionPreference = $false
-          cargo build --bin o824
+          function Expect($name, $code) {
+            if ($code -ne 0) {
+              Write-Output "::error::$name exited $code"
+              exit 1
+            }
+          }
+
+          cargo build --bin o824 2>&1 | Out-Host
+          Expect "cargo build (no key)" $LASTEXITCODE
+
           $key = & ./target/debug/o824.exe manifest-keygen
+          Expect "manifest-keygen" $LASTEXITCODE
           $public = ($key | Select-String 'public key: (\w+)').Matches[0].Groups[1].Value
-          if ($public.Length -ne 64) { Write-Output "::error::no key came out of manifest-keygen"; exit 1 }
-          # `option_env!` is a compile-time read, and a warm cache can satisfy the build
-          # without recompiling — which would leave a keyless binary and make this step
-          # prove nothing. Cleaning the crate that holds the constant forces the question.
+          if (-not $public -or $public.Length -ne 64) {
+            Write-Output "::error::no usable public key; keygen said: $($key -join ' | ')"
+            exit 1
+          }
+
           $env:O824_RELEASE_KEY = $public
-          cargo clean -p o824-manifest
-          cargo build --bin o824
+          cargo clean -p o824-manifest 2>&1 | Out-Host
+          Expect "cargo clean" $LASTEXITCODE
+          cargo build --bin o824 2>&1 | Out-Host
+          Expect "cargo build (with key)" $LASTEXITCODE
+
           $manifest = ".ci-manifest"
           New-Item -ItemType Directory -Force -Path $manifest | Out-Null
           Set-Content -Path (Join-Path $manifest "o824.exe") -Value "not a real binary"
           $other = ".ci-other.hex"
           & ./target/debug/o824.exe manifest-keygen --out $other | Out-Null
+          Expect "manifest-keygen --out" $LASTEXITCODE
           & ./target/debug/o824.exe manifest --root $manifest --out (Join-Path $manifest "manifest.json") --version 9.9.9 --key-file $other | Out-Null
+          Expect "manifest" $LASTEXITCODE
+
           $verdict = & ./target/debug/o824.exe update --check --manifest (Join-Path $manifest "manifest.json") --version 0.1.0 2>&1
           $code = $LASTEXITCODE
           $verdict | ForEach-Object { Write-Output $_ }
-          # Written where a failure can be read without an authenticated log download: the
-          # step summary is rendered on the public run page.
           $summary = "release key step: exit $code`n`n" + ($verdict -join "`n")
           if ($env:GITHUB_STEP_SUMMARY) { $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8 }
           if ($code -ne 5) {
-            Write-Output "::error::a manifest signed by another key must exit 5, got $code"
+            Write-Output "::error::a foreign signature must exit 5, got $code"
             exit 1
           }
           Write-Output "release key path: a foreign signature was refused with exit 5"
+          Remove-Item -Recurse -Force $manifest, $other -ErrorAction SilentlyContinue
 
       - name: cargo test
         shell: pwsh
