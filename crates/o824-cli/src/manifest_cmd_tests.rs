@@ -187,3 +187,36 @@ fn a_bad_argument_is_a_usage_error() {
     let (code, _, err) = run(&["manifest", "--nonsense"]);
     assert_eq!(code, EXIT_USAGE, "{err}");
 }
+
+/// The release script needs the public half of an existing secret without minting a new pair.
+/// If the two disagreed, every published manifest would be signed by a key nobody trusts.
+#[test]
+fn a_key_file_derives_its_own_public_key() {
+    let scratch = Scratch::new("derive");
+    let key = scratch.path().join("key.hex");
+
+    let (code, out, err) = run(&["keygen", "--out", key.to_str().expect("path")]);
+    assert_eq!(code, EXIT_OK, "{err}");
+    let minted = out
+        .lines()
+        .find(|line| line.starts_with("public key: "))
+        .map(|line| line["public key: ".len()..].trim().to_owned())
+        .expect("a public key was printed");
+
+    let (code, out, err) = run(&["keygen", "--from", key.to_str().expect("path")]);
+    assert_eq!(code, EXIT_OK, "{err}");
+    assert_eq!(out.trim(), format!("public key: {minted}"));
+
+    // The secret itself must not leak into the derived output.
+    let secret = fs::read_to_string(&key).expect("secret");
+    assert!(
+        !out.contains(secret.trim()),
+        "the secret is printed back: {out}"
+    );
+}
+
+#[test]
+fn deriving_from_something_that_is_not_a_key_is_a_usage_error() {
+    let (code, _, err) = run(&["keygen", "--from", "not-a-key"]);
+    assert_eq!(code, EXIT_USAGE, "{err}");
+}

@@ -19,6 +19,7 @@ usage: o824 manifest --root <dir> --out <file> [--version <v>] [--key <hex>|--ke
 
   manifest         list every file under --root with its sha256, optionally sign it
   manifest-keygen  make an ed25519 key pair; the secret is written, the public key printed
+                   with --from <secret>, print the public key of an existing secret instead
   verify-manifest  check the signature, then the files against it
 
 Exit codes: 0 clean, 2 the arguments or the manifest are wrong, 5 the release does not match.
@@ -127,10 +128,28 @@ pub fn keygen(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -
         return EXIT_OK;
     }
 
-    let mut flags = FlagSet::new(vec![FlagSpec::valued("out")]);
+    let mut flags = FlagSet::new(vec![FlagSpec::valued("out"), FlagSpec::valued("from")]);
     if let Err(error) = flags.parse("manifest-keygen", args) {
         let _ = writeln!(stderr, "{error}");
         return exit_code_for(error.code);
+    }
+
+    // `--from` derives the public key from an existing secret instead of making a new pair:
+    // a release script has the secret and needs to know which public key to publish.
+    if let Some(source) = flags.value("from") {
+        let text = match std::fs::read_to_string(source) {
+            Ok(text) => text,
+            Err(_) => source.to_owned(),
+        };
+        let key = match o824_manifest::parse_key(&text) {
+            Ok(key) => key,
+            Err(error) => {
+                let _ = writeln!(stderr, "{error}");
+                return exit_code_for(error.code);
+            }
+        };
+        let _ = writeln!(stdout, "public key: {}", o824_manifest::public_hex(&key));
+        return EXIT_OK;
     }
 
     let key = o824_manifest::new_key();

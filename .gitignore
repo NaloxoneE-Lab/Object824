@@ -33,3 +33,4 @@ apps/o824-gui/shot*.png
 .ci-other.hex
 test-output.txt
 sdk-test.txt
+dist/

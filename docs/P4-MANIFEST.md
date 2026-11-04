@@ -128,6 +128,35 @@ manifest: it is signed by 5d00a50a23936fff, not by the expected key f89ed3222923
 
 截图见本次提交说明：面板在 `%LOCALAPPDATA%\o824` 的安装版上验证过。
 
+## 发布脚本：一次命令产出可发布目录
+
+```bash
+scripts/release.sh 0.2.0-rc.1 release.key
+```
+
+它做五件事，任何一步不成立就停：
+
+1. 用私钥文件**派生出公钥**（`o824 manifest-keygen --from`，0.2.0 新增）——发布页需要的是这把公钥；
+2. 带 `O824_RELEASE_KEY=<公钥>` **重新构建内核**。`option_env!` 是编译期读取，暖缓存可能让构建
+   不重编而留下无钥匙的二进制，所以先 `cargo clean -p o824-manifest` 再编；
+3. 用同一把钥匙构建窗口（MSVC 工具链，复用 `env-msvc.sh`）；
+4. 把两个 exe 收进 `dist/<版本>/`，生成清单并**签名**；
+5. **用发布公钥验签 + 逐文件比对**，然后**自检发布版是否真的信任这把钥匙**——最后这条是必需的：
+   第一次跑的时候我发现内核是在导出公钥之前构建的，于是发布版只认成 `self-signed only`。
+
+实测输出（0.2.0-rc.1，一次性密钥）：
+
+```
+signature: ok (f027712ed36acd71)
+files: ok (2 checked)
+
+== does the released kernel trust its own key? ==
+   ok: the binary carries the key
+```
+
+脚本**不上传**任何东西，只把"发布页需要写什么"打出来：版本、公钥、清单的 sha256，以及那段
+未签名说明。上传是人的决定。
+
 ## 还没做的（P4 其余部分）
 
 - 安装器；自更新的"检查—下载—校验—替换"；崩溃恢复。
