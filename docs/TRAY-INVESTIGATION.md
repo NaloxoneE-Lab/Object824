@@ -79,7 +79,40 @@ shell 会接受修改）：
 根本不检查 `Shell_NotifyIcon` 的返回值，`Visible = true` 失败也不会抛异常；我当时的"证据"是一次
 UI Automation 枚举（那个枚举现在连 OneDrive 等已有图标都枚举不到，本身就不可靠）。
 
-### 现在的结论
+
+## 最终根因（2026-11-04 深夜，已验证）
+
+**不是签名，不是参数，不是沙箱会话——是运行位置。**
+
+同一个未签名 exe，三个位置：
+
+| 位置 | 结果 |
+|---|---|
+| `D:\dsh work\Object 824\`（DSH 工作区） | `added=False error=5` |
+| `D:\o824-probe-test\`（D 盘别处） | **`added=True`**，注册成功 |
+| `C:\Users\X_Cyanogen\AppData\Local\o824-probe\` | **`added=True`**，注册成功 |
+
+差别在文件的**强制完整性标签**：
+
+```
+icacls "D:\dsh work\Object 824\tray-probe.exe"
+  ... Mandatory Label\Low Mandatory Level:(I)(NW)     <- 关键
+
+icacls "D:\o824-probe-test\tray-probe.exe"
+  ...（没有这一行）
+```
+
+从 **Low 完整性文件**启动的进程以 Low IL 运行；通知区域是 Medium，**UIPI 不允许低完整性进程向它注册**，
+于是 Shell_NotifyIcon 返回 FALSE + ERROR_ACCESS_DENIED。
+
+这解释了为什么试过的一切都没用：参数、结构大小、消息循环时机、窗口类型、签名、自签名、微软签名的宿主
+（powershell.exe 在 C:\Windows 下，文件没有低完整性标签）——变量根本不是那些。
+
+**结论**：托盘代码本身没问题；它失败是因为 exe 放在 DSH 工作区里。真实安装位置
+（%LOCALAPPDATA% 或 Program Files）不会有这个标签。
+
+### 之前的结论（已被上面推翻，保留作记录）
+
 
 未签名启动器在**这类机器上**无法获得通知区域图标。按 §13（不购买代码签名证书、未签名分发），
 以及 §20（不承诺做不到的事、不劝关闭安全软件），**产品里不做托盘**：关窗即退出。写在这里，是为了
