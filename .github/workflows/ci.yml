@@ -26,6 +26,11 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          # A non-zero exit is the answer this step is looking for (5 means "refused", which
+          # is correct). PowerShell on the runner treats a native command's non-zero exit as a
+          # terminating error, so the check would never run — set that behaviour off and read
+          # `$LASTEXITCODE` explicitly instead.
+          $PSNativeCommandUseErrorActionPreference = $false
           cargo build --bin o824
           $key = & ./target/debug/o824.exe manifest-keygen
           $public = ($key | Select-String 'public key: (\w+)').Matches[0].Groups[1].Value
