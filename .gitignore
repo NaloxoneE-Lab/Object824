@@ -34,3 +34,8 @@ apps/o824-gui/shot*.png
 test-output.txt
 sdk-test.txt
 dist/
+
+# The release signing key must never reach the repository. Ignoring it by name is a safety net
+# for the one mistake that cannot be undone: a published private key signs anything.
+release.key
+*.key

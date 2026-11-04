@@ -246,6 +246,10 @@ Signature verified with key 5c3345b3e56301d3. Nothing has been installed.` + `[N
 
 发布地址默认是 GitHub 的 `releases/latest/download`，`O824_UPDATE_URL` 可覆盖——那正是验证时用的。
 
+## 发布清单
+
+逐步的发布流程（含自查和退出路径）在 [`docs/RELEASE.md`](RELEASE.md)。
+
 ## 还没做的（P4 其余部分）
 
 - 安装器；自更新的"检查—下载—校验—替换"；崩溃恢复。

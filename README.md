@@ -27,6 +27,8 @@ O824 内核的 Rust 实现。**Go 版（`D:\dsh work\Object 824`，tag `v0-go-re
 | 4 | [`docs/design/2026-10-28-dsh-launcher-design.md`](docs/design/2026-10-28-dsh-launcher-design.md) | 设计规范（唯一权威） |
 | 5 | [`docs/week1/`](docs/week1/) | 第一周的规格级材料（含 YAML spike 结论） |
 
+发布流程见 [`docs/RELEASE.md`](docs/RELEASE.md)：生成密钥一次、每次发布一条命令、发布后按清单自查。
+
 ## 未签名分发：会看到什么，怎么核对
 
 这个项目**不购买代码签名证书**（设计文档 §13 的决定），所以：
