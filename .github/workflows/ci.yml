@@ -41,7 +41,11 @@ jobs:
 
           $key = & ./target/debug/o824.exe manifest-keygen
           Expect "manifest-keygen" $LASTEXITCODE
-          $public = ($key | Select-String 'public key: (\w+)').Matches[0].Groups[1].Value
+          # No `\w` here: inside a single-quoted PowerShell string it is a literal backslash,
+          # the pattern never matches, and `$null.Matches` then kills the step before it can
+          # say why. A plain character class needs no escaping in YAML or in PowerShell.
+          $found = $key | Select-String -Pattern 'public key: ([0-9a-f]{64})'
+          $public = if ($found) { $found.Matches[0].Groups[1].Value } else { $null }
           if (-not $public -or $public.Length -ne 64) {
             Write-Output "::error::no usable public key; keygen said: $($key -join ' | ')"
             exit 1
