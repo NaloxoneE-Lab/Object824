@@ -549,6 +549,42 @@ mod tests {
         assert_eq!(unknown.headline, text(Locale::En, "check.unknown.headline"));
     }
 
+    /// §20: the empty state guides, and the guidance has to be usable — three ways in, each
+    /// with a command or a link, in both languages.
+    #[test]
+    fn the_install_guidance_names_the_official_ways() {
+        for locale in [Locale::En, Locale::ZhHans] {
+            let (guidance, steps) = install_guidance(locale);
+            assert!(!guidance.trim().is_empty(), "{locale:?}: no guidance");
+            assert_eq!(steps.len(), 3, "{locale:?}: {steps:?}");
+            let commands: Vec<&str> = steps.iter().map(|(_, command)| command.as_str()).collect();
+            assert!(
+                commands
+                    .iter()
+                    .any(|command| command.contains("npm i -g @deepseek-ai/dsh")),
+                "{locale:?}: the web form's command is missing: {commands:?}"
+            );
+            assert!(
+                commands
+                    .iter()
+                    .any(|command| command.contains("@deepseek-harness-tui/dsh-tui")),
+                "{locale:?}: the terminal client's command is missing: {commands:?}"
+            );
+            assert!(
+                commands
+                    .iter()
+                    .any(|command| command.starts_with("https://")),
+                "{locale:?}: the installer link is missing: {commands:?}"
+            );
+            for (label, _) in &steps {
+                assert!(
+                    !label.trim().is_empty(),
+                    "{locale:?}: a step without a name"
+                );
+            }
+        }
+    }
+
     /// The button's label and its verb come from the same state, so they cannot disagree.
     #[test]
     fn a_button_says_what_it_does() {
