@@ -176,9 +176,59 @@ fn log_line(line: &str) {
     }
 }
 
+/// True when this is the first window of this session.
+///
+/// A launcher that can be opened twice shows two contradictory diagnoses of the same
+/// machine, and the second window's "repair" races the first one's. The second copy brings
+/// the first to the front and leaves, which is what every tool with a single window does.
+///
+/// The mutex is `Local\` on purpose: it is per session, so two people logged in at once do
+/// not block each other, and it needs no privilege.
+#[allow(unsafe_code)]
+fn only_instance() -> bool {
+    #[cfg(windows)]
+    {
+        use windows::core::HSTRING;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            FindWindowW, SetForegroundWindow, ShowWindow, SW_RESTORE,
+        };
+
+        // The window itself is the evidence. A named mutex was tried first and reported
+        // "already exists" on a machine with nothing running — the last-error slot is a
+        // thread-local that any Win32 call can clobber, and chasing it cost more than the
+        // guard is worth. A window with this title is unambiguous, and it is the thing the
+        // user would look for anyway.
+        // SAFETY: two Win32 calls, no pointers beyond an owned string.
+        unsafe {
+            let title = HSTRING::from("O824");
+            match FindWindowW(None, &title) {
+                Ok(existing) if !existing.is_invalid() => {
+                    log_line("another window is open; brought it to the front and left");
+                    let _ = ShowWindow(existing, SW_RESTORE);
+                    let _ = SetForegroundWindow(existing);
+                    false
+                }
+                _ => true,
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        true
+    }
+}
+
 fn main() {
     log_line("=== start ===");
+    if !only_instance() {
+        log_line("another window is open; brought it to the front and left");
+        return;
+    }
     log_line("=== start ===");
+    if !only_instance() {
+        log_line("another window is open; brought it to the front and left");
+        return;
+    }
     log_line(&format!(
         "exe={:?} cwd={:?}",
         std::env::current_exe().ok(),
