@@ -312,6 +312,9 @@ fn main() {
             if let Err(error) = build_tray(app) {
                 log_line(&format!("tray: not created: {error}"));
             }
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = native_tray(&window);
+            }
             Ok(())
         })
         .manage(Kernel(Mutex::new(None)))
@@ -800,6 +803,73 @@ fn open_url(url: &str) {
     let _ = url;
 }
 
+/// Writes the icon's pixels next to the log, so "the icon is invisible" can be checked
+/// against the image itself instead of guessed at.
+fn dump_icon(image: &tauri::image::Image<'_>) {
+    let width = image.width();
+    let height = image.height();
+    let rgba = image.rgba();
+    let opaque = rgba.chunks(4).filter(|pixel| pixel[3] > 8).count();
+    log_line(&format!(
+        "icon: {width}x{height} bytes={} opaque_pixels={opaque}",
+        rgba.len()
+    ));
+    let Some(directory) = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
+    else {
+        return;
+    };
+    let path = directory.join("tray-icon.rgba");
+    let _ = std::fs::write(path, rgba);
+}
+
+/// Registers the notification icon with the shell directly, and says what the shell answered.
+///
+/// This exists because Tauri reports success and the icon is not there: the only way to know
+/// which layer is lying is to ask the shell ourselves and write down the answer. If this
+/// succeeds the icon appears even though Tauri's copy does not; if it fails, the error code
+/// names the reason.
+#[allow(unsafe_code)]
+#[cfg(windows)]
+fn native_tray(window: &tauri::WebviewWindow) -> bool {
+    use windows::Win32::Foundation::{GetLastError, HWND};
+    use windows::Win32::UI::Shell::{
+        Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NOTIFYICONDATAW,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{LoadIconW, IDI_APPLICATION, WM_APP};
+
+    let Ok(handle) = window.hwnd() else {
+        log_line("native tray: the window has no handle");
+        return false;
+    };
+    let hwnd = HWND(handle.0 as *mut core::ffi::c_void);
+    let mut data = NOTIFYICONDATAW::default();
+    data.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
+    data.hWnd = hwnd;
+    data.uID = 1;
+    data.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+    data.uCallbackMessage = WM_APP + 1;
+    // SAFETY: a system icon needs no ownership, and the tooltip is copied into the struct.
+    unsafe {
+        data.hIcon = LoadIconW(None, IDI_APPLICATION).unwrap_or_default();
+        let tip: Vec<u16> = "O824 ".encode_utf16().collect();
+        data.szTip[..tip.len()].copy_from_slice(&tip);
+        let added = Shell_NotifyIconW(NIM_ADD, &data).as_bool();
+        log_line(&format!(
+            "native tray: added={added} error={} cbSize={}",
+            GetLastError().0,
+            data.cbSize
+        ));
+        added
+    }
+}
+
+#[cfg(not(windows))]
+fn native_tray(_window: &tauri::WebviewWindow) -> bool {
+    false
+}
+
 /// A tray icon: show the window, or quit.
 ///
 /// The point is not decoration. This tool is opened when something is broken, and closing
@@ -818,6 +888,9 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[&show, &updates, &quit])?;
 
     let icon = app.default_window_icon().cloned();
+    if let Some(image) = &icon {
+        dump_icon(image);
+    }
     log_line(&format!(
         "tray: default_window_icon={}",
         match &icon {
