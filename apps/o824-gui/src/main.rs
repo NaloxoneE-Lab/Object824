@@ -24,6 +24,8 @@
 
 use std::sync::Mutex;
 
+use tauri::Manager;
+
 use o824_bridge::{Bridge, Options};
 use o824_present::Locale;
 use serde::Serialize;
@@ -304,6 +306,7 @@ fn main() {
                 builder = builder.data_directory(directory);
             }
             builder.build()?;
+            build_tray(app)?;
             Ok(())
         })
         .manage(Kernel(Mutex::new(None)))
@@ -762,6 +765,87 @@ struct FoundRow {
 /// `O824_KERNEL` wins, then a copy beside the window, then the workspace build the window
 /// was built from, then `PATH`. A window that cannot find its kernel says so and points at
 /// the command line rather than guessing.
+/// Opens a URL in the user's browser.
+//
+// One ShellExecuteW call: no plugin, no bundler, and the URL is a constant in this file.
+#[allow(unsafe_code)]
+#[cfg(windows)]
+fn open_url(url: &str) {
+    use windows::core::{HSTRING, PCWSTR};
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let verb = HSTRING::from("open");
+    let target = HSTRING::from(url);
+    // SAFETY: four owned strings and a window handle of 0; nothing outlives the call.
+    unsafe {
+        ShellExecuteW(
+            None,
+            &verb,
+            &target,
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        );
+    }
+}
+
+#[cfg(not(windows))]
+fn open_url(url: &str) {
+    let _ = url;
+}
+
+/// A tray icon: show the window, or quit.
+///
+/// The point is not decoration. This tool is opened when something is broken, and closing
+/// the window should not mean losing the diagnosis that was on screen; a tray keeps it one
+/// click away and gives people the way out they expect from a background tool.
+fn build_tray(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+    let show = MenuItem::with_id(app, "show", "Show O824", true, None::<&str>)?;
+    // Checking for a new version means opening the page that publishes it, never replacing
+    // this executable: the build is unsigned, and an unsigned binary that updates itself is
+    // the one thing a launcher must not do.
+    let updates = MenuItem::with_id(app, "updates", "Check for updates…", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &updates, &quit])?;
+
+    TrayIconBuilder::new()
+        .icon(app.default_window_icon().cloned().ok_or_else(|| {
+            tauri::Error::AssetNotFound("the window icon is missing".to_owned())
+        })?)
+        .menu(&menu)
+        .tooltip("O824")
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "quit" => app.exit(0),
+            "updates" => open_url("https://github.com/NaloxoneE-Lab/Object824/releases"),
+            "show" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                if let Some(window) = tray.app_handle().get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+        })
+        .build(app)?;
+    Ok(())
+}
+
 /// Where the kernel should look, when this window is being exercised against a fixture.
 ///
 /// `O824_ROOT` exists so the whole window — not just the protocol underneath it — can be run
