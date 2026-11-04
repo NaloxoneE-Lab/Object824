@@ -44,30 +44,8 @@
    先试过命名互斥体，在这台机器上**每次都报"已存在"**（`GetLastError` 是线程局部槽，任何
    Win32 调用都会改它，而我在检查前写了日志），追它比这个守卫本身更贵。用窗口本身作证据，
    简单且可观察。
-5. **托盘：删掉了**（2026-11-04 决定）。排查结论写在 `docs/TRAY-INVESTIGATION.md`：调
-   `Shell_NotifyIconW` 一律得到 `FALSE + ERROR_ACCESS_DENIED`，而**同一台机器上 .NET 的
-   `NotifyIcon` 能正常加图标**。已排除：令牌受限、完整性级别、图标像素、窗口类型（顶层/仅消息）、
-   回调消息范围、事件循环时机、四份残留 explorer 进程、shell 提权。差别没有找到，所以这个
-   功能不留在产品里——关窗就是退出，和窗口的关闭按钮语义一致。
-   **自动更新（原计划的另一半）没有做**：本产品不买代码签名证书，一个能自更新的未签名 exe
-   是启动器最不该做的事。要做的话顺序是：发布清单 ed25519 签名（P4）→ 先只读校验 → 再谈替换。
-
-## 开发时怎么跑
-
-```bash
-source scripts/env.sh          # 自包含 gnu 工具链（给主工作区）
-source scripts/env-msvc.sh     # MSVC + SDK（给 GUI，Tauri 需要）
-export RUSTUP_TOOLCHAIN=stable-x86_64-pc-windows-msvc
-cd apps/o824-gui && cargo build --release
-bash scripts/gui-shot.sh out.png 6     # 构建→启动→截图，并拒绝截到旧进程
-```
-
-测试用的两个开关（**只在开发/验证时用**）：
-
-- `O824_ROOT=<fixture 树>`：让窗口对着合成树跑，不影响真实安装；
-- `O824_GUI_AUTOREPAIR=hold|slow|1`：自动走一遍修复流程（`hold` 停在确认面板供拍照）。
-
-## 构建期两个坑（都踩过）
-
-1. 前端资源是**编译期嵌入**的，`build.rs` 里必须声明 `dist/` 为输入，否则改完页面跑的还是旧的；
-2. **运行中的进程占着 exe**，`cargo build` 会静默保留旧二进制——改完先杀进程。
+5. **托盘：已恢复**（2026-11-04 深夜）。之前删掉它是因为图标从未出现，而根因不是代码：
+   DSH 工作区里的文件带 **Low 强制完整性标签**，从这种文件启动的进程以 Low IL 运行，而通知区域是
+   Medium——UIPI 不允许低完整性进程注册，于是 `Shell_NotifyIcon` 返回 `ACCESS_DENIED`。同一个 exe
+   放到 `%LOCALAPPDATA%` 或 D 盘别处就正常。**用 `scripts/install-local.ps1` 装到
+   `%LOCALAPPDATA%\o824` 再从那里运行**，不要从构建目录直接跑。详见 `docs/TRAY-INVESTIGATION.md`。

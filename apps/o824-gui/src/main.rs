@@ -24,6 +24,8 @@
 
 use std::sync::Mutex;
 
+use tauri::Manager;
+
 
 use o824_bridge::{Bridge, Options};
 use o824_present::Locale;
@@ -310,6 +312,10 @@ fn main() {
                 builder = builder.data_directory(directory);
             }
             builder.build()?;
+            // Best effort: a machine that refuses the icon should not stop the window.
+            if let Err(error) = build_tray(app) {
+                log_line(&format!("tray: not created: {error}"));
+            }
             // No tray: on this machine the shell refuses every registration (see
             // docs/P3-STATUS.md). Closing the window quits, which is what the window's own
             // close button promises.
@@ -815,6 +821,91 @@ fn log_token() {
 
 #[cfg(not(windows))]
 fn log_token() {}
+
+
+/// The notification-area icon, with the three things it is for.
+///
+/// Reinstated after the reason it never appeared was found: files inside the DSH workspace
+/// carry a low-integrity mandatory label, and a process started from one of those runs at low
+/// integrity, which the notification area (medium) refuses. Run from a normal install
+/// location — `%LOCALAPPDATA%` or Program Files — the same code registers its icon.
+fn build_tray(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+    let show = MenuItem::with_id(app, "show", "Show O824", true, None::<&str>)?;
+    // Checking for a new version means opening the page that publishes it, never replacing
+    // this executable: the build is unsigned, and an unsigned binary that updates itself is
+    // the one thing a launcher must not do.
+    let updates = MenuItem::with_id(app, "updates", "Check for updates...", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &updates, &quit])?;
+
+    let icon = app.default_window_icon().cloned().ok_or_else(|| {
+        tauri::Error::AssetNotFound("the window icon is missing".to_owned())
+    })?;
+    log_line(&format!("tray: icon {}x{}", icon.width(), icon.height()));
+
+    TrayIconBuilder::new()
+        .icon(icon)
+        .menu(&menu)
+        .tooltip("O824")
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "quit" => app.exit(0),
+            "updates" => open_url("https://github.com/Naloxone-E-Lab/Object824/releases"),
+            "show" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                if let Some(window) = tray.app_handle().get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+        })
+        .build(app)?;
+    log_line("tray: created");
+    Ok(())
+}
+
+/// Opens a URL in the user's browser.
+#[allow(unsafe_code)]
+#[cfg(windows)]
+fn open_url(url: &str) {
+    use windows::core::{HSTRING, PCWSTR};
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let verb = HSTRING::from("open");
+    let target = HSTRING::from(url);
+    // SAFETY: four owned strings and a window handle of 0; nothing outlives the call.
+    unsafe {
+        ShellExecuteW(
+            None,
+            &verb,
+            &target,
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        );
+    }
+}
+
+#[cfg(not(windows))]
+fn open_url(url: &str) {
+    let _ = url;
+}
 
 /// Where the kernel should look, when this window is being exercised against a fixture.
 ///
