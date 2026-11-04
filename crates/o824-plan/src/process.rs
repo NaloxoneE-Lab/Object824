@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use o824_errs::{Code, Error};
 use o824_model::{Install, Timestamp};
 
-use crate::{Plan, Step, KIND_RESTORE_SNAPSHOT, PLAN_TTL_SECONDS};
+use crate::{Plan, Step, KIND_RESTORE_SNAPSHOT, KIND_UNDO_APPLY, PLAN_TTL_SECONDS};
 
 /// Start the form an installation provides.
 pub const ACTION_START: &str = "start";
@@ -75,6 +75,21 @@ pub fn build_process(
         fingerprint: Default::default(),
     };
     if action == ACTION_ROLLBACK {
+        // A journal with replacements is the better answer: it puts back exactly the entries
+        // this run replaced. The snapshot stays as the fallback for a run that replaced none
+        // (a settings-file repair), where the snapshot is what covers the change.
+        if let Some(journal_id) = newest_apply_with_links(data_root, &install.install_id) {
+            let scope = if install.home.is_empty() {
+                install.root.clone()
+            } else {
+                install.home.clone()
+            };
+            plan.root = scope.clone();
+            let mut step = Step::new(KIND_UNDO_APPLY, scope);
+            step.from = journal_id;
+            plan.steps.push(step);
+            return Ok(plan);
+        }
         // §21.5 lists rollback among the plan actions, and the machinery exists: a snapshot
         // is taken before every apply, and restoring one is a step `apply` already runs. The
         // only thing missing was a way to ask for it.
@@ -175,6 +190,53 @@ fn process_plan_id(install: &Install, root: &Path, now: Timestamp, action: &str)
 /// The installation root as a path.
 fn root_of(install: &Install) -> PathBuf {
     PathBuf::from(&install.root)
+}
+
+/// The newest journal for `install_id` that recorded at least one replaced link.
+///
+/// A repair that only rewrote settings has nothing here, and the snapshot is what covers it;
+/// one that rebuilt a link does, and only its own record can put that link back.
+fn newest_apply_with_links(data_root: &Path, install_id: &str) -> Option<String> {
+    let directory = data_root.join("journal");
+    let entries = std::fs::read_dir(directory).ok()?;
+    let mut candidates: Vec<(std::time::SystemTime, String)> = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+            continue;
+        };
+        if value.get("installId").and_then(|value| value.as_str()) != Some(install_id) {
+            continue;
+        }
+        if value.get("state").and_then(|value| value.as_str()) != Some("done") {
+            continue;
+        }
+        let replaced = value
+            .get("replaced")
+            .and_then(|value| value.as_array())
+            .map(|items| !items.is_empty())
+            .unwrap_or(false);
+        if !replaced {
+            continue;
+        }
+        let Ok(modified) = entry.metadata().and_then(|metadata| metadata.modified()) else {
+            continue;
+        };
+        let id = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or_default()
+            .to_owned();
+        candidates.push((modified, id));
+    }
+    candidates.sort_by_key(|entry| std::cmp::Reverse(entry.0));
+    candidates.into_iter().next().map(|(_, id)| id)
 }
 
 fn stop_step(kind: &str, install: &Install) -> Step {

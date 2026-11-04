@@ -153,6 +153,20 @@ pub fn install_guidance(locale: Locale) -> (String, Vec<(String, String)>) {
     (text(locale, "install.guidance"), steps)
 }
 
+/// The button that undoes the last repair.
+pub fn undo_label(locale: Locale) -> String {
+    text(locale, "repair.undo")
+}
+
+/// The sentence after an undo.
+pub fn undone_copy(locale: Locale) -> Copy {
+    Copy {
+        headline: text(locale, "repair.undone"),
+        reason: String::new(),
+        next_step: String::new(),
+    }
+}
+
 /// The button that copies a command.
 pub fn copy_label(locale: Locale) -> String {
     text(locale, "install.copy")
@@ -371,6 +385,9 @@ fn catalog() -> &'static [(&'static str, &'static str, &'static str)] {
         ("repair.done", "Fixed what could be fixed.", "能修的都修好了。"),
         ("repair.remaining", "Something is still wrong:", "还有问题没解决："),
         ("repair.restore", "Restore the backup", "还原备份"),
+        ("repair.undo", "Undo this repair", "撤销这次修复"),
+        ("repair.undoing", "Undoing…", "正在撤销…"),
+        ("repair.undone", "The repair was undone.", "已撤销这次修复。"),
         ("repair.restored", "The backup was restored.", "已还原到备份。"),
         ("repair.failed", "The repair did not finish", "修复没能完成"),
         ("repair.restore_failed", "The backup could not be restored.", "还原失败。"),

@@ -58,6 +58,12 @@ pub const KIND_DEDUPE_LOADER: &str = "dedupe-loader";
 /// Copies `from` over `path`. No P0 finding maps to it; it is the generic file
 /// step the rollback tests use.
 pub const KIND_REPLACE_FILE: &str = "replace-file";
+/// Puts back the link entries the last apply replaced, from the journal's own record.
+///
+/// This is what makes a rollback truthful for a repair that touched `node_modules`: the
+/// snapshot does not cover that tree, but the journal does, because `apply` recorded each
+/// entry before it replaced it. `from` carries the journal id.
+pub const KIND_UNDO_APPLY: &str = "undo-apply";
 
 /// How long a plan stays applicable: fifteen minutes, per §15.4.
 pub const PLAN_TTL_SECONDS: u64 = 15 * 60;

@@ -44,6 +44,23 @@ impl State {
     }
 }
 
+/// One entry a link step replaced, as the journal records it.
+///
+/// The snapshot cannot restore these — `node_modules` is deliberately out of its scope — so
+/// the journal carries them instead. Without this the rollback has nothing to put back, and a
+/// "restore" button would be a promise the tool cannot keep.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JournalLink {
+    /// The absolute path.
+    pub path: String,
+    /// `absent` (the step created it), `link` (it pointed somewhere), or `other`.
+    pub kind: String,
+    /// The target it pointed at, when `kind` is `link`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub target: String,
+}
+
 /// One apply run.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -68,6 +85,9 @@ pub struct Journal {
     /// The failure the run reported; absent on success.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub error: String,
+    /// The link entries this run replaced, newest last.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub replaced: Vec<JournalLink>,
     /// The rollback's own failure; absent when the rollback succeeded.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub rollback_error: String,
@@ -91,6 +111,7 @@ impl Journal {
             started_at,
             finished_at: None,
             steps,
+            replaced: Vec::new(),
             error: String::new(),
             rollback_error: String::new(),
         }

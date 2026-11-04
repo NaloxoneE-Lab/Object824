@@ -31,6 +31,7 @@ const elements = {
   confirmCancel: document.getElementById("confirm-cancel"),
   formButtons: document.getElementById("form-buttons"),
   formStop: document.getElementById("form-stop"),
+  formUndo: document.getElementById("form-undo"),
   formUrl: document.getElementById("form-url"),
   copy: document.getElementById("copy"),
   status: document.getElementById("status"),
@@ -308,6 +309,16 @@ async function runRepair() {
     // Both the row and the detail list are stale now.
     await refreshRow(chosen);
     await showFindings(chosen.id, { quiet: true });
+    // §20.3: what was just changed can be put back, and the button says so.
+    if (result.applied) {
+      try {
+        const labels = await invoke("form_action", { installId: "", action: "labels" });
+        elements.formUndo.textContent = labels.undo_label;
+      } catch (error) {
+        elements.formUndo.textContent = "Undo";
+      }
+      elements.formUndo.hidden = false;
+    }
   } catch (error) {
     showFailure(String(error));
   } finally {
@@ -395,6 +406,28 @@ async function runFormAction(action) {
 }
 
 elements.formStop?.addEventListener("click", () => void runFormAction("stop"));
+
+/// Undoes the repair that was just applied, and says what the machine looks like now.
+async function runUndo() {
+  const install = chosen || lastDiagnosed;
+  if (!install) return;
+  elements.status.textContent = "undoing…";
+  elements.formUndo.disabled = true;
+  try {
+    const result = await invoke("undo_repair", { installId: install.id });
+    elements.headline.textContent = result.headline;
+    elements.reason.textContent = result.reason;
+    elements.status.textContent = result.findings === 0 ? "done" : `${result.findings} problem(s)`;
+    await refreshRow(install);
+    await showFindings(install.id, { quiet: true });
+  } catch (error) {
+    showFailure(String(error));
+  } finally {
+    elements.formUndo.disabled = false;
+  }
+}
+
+elements.formUndo?.addEventListener("click", () => void runUndo());
 
 elements.copy?.addEventListener("click", async () => {
   try {

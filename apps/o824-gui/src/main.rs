@@ -66,6 +66,8 @@ struct RunningView {
     stop_label: String,
     /// What the link to a running web form says.
     open_label: String,
+    /// What the undo button says.
+    undo_label: String,
     /// The address to open, for a form that has one.
     url: Option<String>,
     /// The sentence for the user.
@@ -97,6 +99,29 @@ struct PlanView {
     cancel: String,
     /// When the plan stops being applicable.
     expires_at: String,
+}
+
+/// Undoes the last repair by replaying the journal's record of what it replaced.
+#[tauri::command]
+async fn undo_repair(install_id: String) -> Result<ApplyView, String> {
+    let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
+    let mut bridge = Bridge::start(&kernel_options()).map_err(|error| error.to_string())?;
+    let plan = bridge
+        .plan(&install_id, "rollback")
+        .map_err(|error| error.to_string())?;
+    bridge.apply(&plan).map_err(|error| error.to_string())?;
+    let after = bridge.doctor(&install_id).map_err(|error| error.to_string())?;
+    let _ = bridge.close();
+    let findings = after["findings"].as_array().map(Vec::len).unwrap_or(0);
+    let copy = o824_present::undone_copy(locale);
+    Ok(ApplyView {
+        applied: true,
+        findings,
+        repairable: 0,
+        headline: copy.headline,
+        reason: copy.reason,
+        next_step: copy.next_step,
+    })
 }
 
 /// What `apply` produced.
@@ -290,6 +315,7 @@ fn main() {
             summarize,
             repair_plan,
             repair_apply,
+            undo_repair,
             form_action,
             install_help
         ])
@@ -501,6 +527,7 @@ async fn form_action(install_id: String, action: String) -> Result<RunningView, 
             start_label: o824_present::start_label(locale),
             stop_label: o824_present::stop_label(locale),
             open_label: o824_present::open_label(locale),
+            undo_label: o824_present::undo_label(locale),
         });
     }
     if action != "start" && action != "stop" {
@@ -545,6 +572,7 @@ async fn form_action(install_id: String, action: String) -> Result<RunningView, 
         start_label: o824_present::start_label(locale),
         stop_label: o824_present::stop_label(locale),
         open_label: o824_present::open_label(locale),
+        undo_label: o824_present::undo_label(locale),
     })
 }
 
@@ -553,11 +581,13 @@ async fn form_action(install_id: String, action: String) -> Result<RunningView, 
 async fn repair_plan(
     pending: tauri::State<'_, PendingPlan>,
     install_id: String,
+    action: Option<String>,
 ) -> Result<PlanView, String> {
     let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
     let mut bridge = Bridge::start(&kernel_options()).map_err(|error| error.to_string())?;
+    let action = action.unwrap_or_else(|| "repair".to_owned());
     let plan = bridge
-        .plan(&install_id, "repair")
+        .plan(&install_id, &action)
         .map_err(|error| error.to_string())?;
     let _ = bridge.close();
 

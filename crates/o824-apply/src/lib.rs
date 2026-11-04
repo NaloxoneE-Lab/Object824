@@ -175,6 +175,15 @@ pub fn run(data_root: &Path, plan: &mut Plan, root: &Path) -> Result<(), Error> 
                     error,
                 );
             }
+            entry.replaced.push(journal::JournalLink {
+                path: state.path.display().to_string(),
+                kind: match state.kind {
+                    LinkStateKind::Absent => "absent".to_owned(),
+                    LinkStateKind::Link => "link".to_owned(),
+                    LinkStateKind::Other => "other".to_owned(),
+                },
+                target: state.target.display().to_string(),
+            });
             replaced.push(state);
         }
         if let Err(error) = execute(data_root, &plan.install_id, root, &mut plan.steps[index]) {
@@ -286,6 +295,7 @@ fn execute(data_root: &Path, install_id: &str, root: &Path, step: &mut Step) -> 
         o824_plan::KIND_RESTORE_SNAPSHOT => restore_snapshot(data_root, install_id, root, step),
         o824_plan::KIND_REPLACE_FILE => replace_file(step),
         o824_plan::KIND_REINSTALL_PROFILE => reinstall::reinstall_profile(step),
+        o824_plan::KIND_UNDO_APPLY => undo_apply(data_root, step),
         other => Err(internal(format!("apply: unknown step kind {other:?}"))),
     }
 }
@@ -341,6 +351,88 @@ fn dedupe_loader(_step: &Step) -> Result<(), Error> {
         Code::Unsupported,
         "apply: dedupe-loader is not reachable from any P0 finding (F03 is advisory), so this          build does not carry its writer; the step is refused rather than half-implemented",
     ))
+}
+
+/// Removes a junction or a symbolic link, and nothing else.
+///
+/// `remove_dir_all` on a junction would walk into its target and delete the plugin it points
+/// at — the single most dangerous mistake available here.
+fn remove_junction(path: &Path) -> Result<(), Error> {
+    match fs::remove_dir(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => match fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(file_error) => Err(internal(format!(
+                "apply: cannot remove {:?}: {error} / {file_error}",
+                path.display().to_string()
+            ))),
+        },
+    }
+}
+
+/// Puts back what the journal says an earlier apply replaced.
+///
+/// The snapshot cannot do this — `node_modules` is out of its scope — so the record `apply`
+/// wrote is the only thing that can. Entries are replayed newest first, so a path replaced
+/// twice ends up as it was before the first of those two steps.
+fn undo_apply(data_root: &Path, step: &Step) -> Result<(), Error> {
+    let journal_id = step.from.trim();
+    if journal_id.is_empty() {
+        return Err(internal(
+            "apply: undo-apply needs the journal id in `from`".to_owned(),
+        ));
+    }
+    let path = journal::journal_path(data_root, journal_id)?;
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Err(drift(format!(
+                "apply: the journal for {journal_id:?} is gone; nothing to undo"
+            )))
+        }
+        Err(error) => {
+            return Err(internal(format!(
+                "apply: cannot read the journal for {journal_id:?}: {error}"
+            )))
+        }
+    };
+    let parsed: journal::Journal = match serde_json::from_str(&text) {
+        Ok(journal) => journal,
+        Err(error) => {
+            return Err(internal(format!(
+                "apply: the journal for {journal_id:?} is unreadable: {error}"
+            )))
+        }
+    };
+    let Some(journal) = Some(parsed) else {
+        return Err(drift(format!(
+            "apply: the journal for {journal_id:?} is gone; nothing to undo"
+        )));
+    };
+
+    for link in journal.replaced.iter().rev() {
+        let path = Path::new(&link.path);
+        match link.kind.as_str() {
+            // The step created it, so undoing means removing it.
+            "absent" => {
+                if fs::symlink_metadata(path).is_ok() {
+                    remove_junction(path)?;
+                }
+            }
+            // It was a link to `target`: put that link back.
+            "link" => {
+                if fs::symlink_metadata(path).is_ok() {
+                    remove_junction(path)?;
+                }
+                create_junction(path, Path::new(&link.target))?;
+            }
+            // A real file or directory: the repair did not create it and this cannot
+            // reconstruct it. Leave it alone rather than guess.
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 /// Recreates a profile `node_modules` link as a directory junction.

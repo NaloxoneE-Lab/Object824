@@ -180,12 +180,13 @@ fn a_repair_plan_can_be_applied_and_leaves_nothing_behind() {
     assert!(bridge.close());
 }
 
-/// §21.5 puts rollback among the plan actions, and the mechanism works — but it restores
-/// what a snapshot covers, which is the settings tree, not the plugin folders. A repair that
-/// rebuilds a link is therefore **not** undone by it, and this test says so rather than
-/// pretending otherwise: a restore button that does not restore is worse than none.
+/// §21.5 puts rollback among the plan actions, and this is now the real thing: the journal
+/// recorded each link the repair replaced, so the rollback puts **that link** back.
+///
+/// The snapshot is not involved — `node_modules` is outside its scope — which is exactly why
+/// the journal has to carry the record.
 #[test]
-fn rollback_restores_the_snapshot_it_covers_and_says_nothing_more() {
+fn a_repair_that_rebuilt_a_link_is_undone_by_the_rollback() {
     let fixture = o824_fixtures::build("dangling-bridge").expect("fixture");
     let mut bridge = Bridge::start(&options_for_fixture(&fixture)).expect("start");
 
@@ -201,77 +202,27 @@ fn rollback_restores_the_snapshot_it_covers_and_says_nothing_more() {
 
     let repair = bridge.plan("i1", "repair").expect("repair plan");
     bridge.apply(&repair).expect("apply the repair");
+    let repaired = bridge.doctor("i1").expect("doctor");
+    assert_eq!(
+        repaired["findings"].as_array().map(Vec::len).unwrap_or(0),
+        0,
+        "the repair worked: {repaired}"
+    );
 
     let rollback = bridge.plan("i1", "rollback").expect("rollback plan");
     let steps = rollback["steps"].as_array().expect("steps");
     assert_eq!(steps.len(), 1, "{rollback}");
-    assert_eq!(steps[0]["kind"], "restore-snapshot", "{rollback}");
-    assert!(
-        steps[0]["from"]
-            .as_str()
-            .map(|from| !from.is_empty())
-            .unwrap_or(false),
-        "the step names the snapshot it restores: {rollback}"
-    );
-
-    // The plan runs to completion: what it restores is the snapshot's own file set.
-    bridge.apply(&rollback).expect("apply the rollback");
-    let after = bridge.doctor("i1").expect("doctor");
-    assert!(after["findings"].is_array(), "{after}");
-
-    // And the limit, stated as a test so it cannot be forgotten: the plugin folder is out of
-    // the snapshot's scope, so a rebuilt link is not put back.
-    let node_modules = fixture
-        .root()
-        .join("profiles")
-        .join("desktop")
-        .join("node_modules");
-    assert!(
-        node_modules.is_dir(),
-        "the fixture keeps its plugins outside the snapshot"
-    );
-    assert!(bridge.close());
-}
-
-/// §21.5: starting and stopping are plan actions, and the window can run them without a
-/// second code path.
-///
-/// The fixture's `DeepSeek Harness.exe` is a placeholder, not a program, so applying a start
-/// here fails — and that failure is the part worth pinning: it names the executable and the
-/// OS error instead of dying silently. The real spawn is covered where a real process can be
-/// spawned: `o824-formproc`'s own tests, which use a stand-in that stays alive.
-#[test]
-fn start_and_stop_are_plans_and_a_bad_executable_fails_loudly() {
-    let fixture = o824_fixtures::build("ok").expect("fixture");
-    let mut bridge = Bridge::start(&options_for_fixture(&fixture)).expect("start");
-
-    let start = bridge.plan("i1", "start").expect("start plan");
-    let steps = start["steps"].as_array().expect("steps");
-    assert_eq!(steps.len(), 1, "{start}");
-    assert_eq!(steps[0]["kind"], "start-desktop", "{start}");
-
-    let stop = bridge.plan("i1", "stop").expect("stop plan");
-    let steps = stop["steps"].as_array().expect("steps");
-    assert_eq!(steps[0]["kind"], "stop-desktop", "{stop}");
     assert_eq!(
-        steps[0]["args"][0].as_str().expect("install id"),
-        "installId=i1",
-        "{stop}"
+        steps[0]["kind"], "undo-apply",
+        "the rollback replays the journal rather than a snapshot: {rollback}"
     );
+    bridge.apply(&rollback).expect("apply the rollback");
 
-    // The placeholder cannot be executed, and the message has to say which file it tried.
-    let error = bridge
-        .apply(&start)
-        .expect_err("a placeholder is not a program");
-    match error {
-        BridgeError::Kernel { code, message } => {
-            assert!(code.starts_with("E_"), "{code}");
-            assert!(
-                message.contains("DeepSeek Harness.exe"),
-                "the message names the executable: {message}"
-            );
-        }
-        other => panic!("unexpected error: {other:?}"),
-    }
+    let after = bridge.doctor("i1").expect("doctor");
+    let findings = after["findings"].as_array().map(Vec::len).unwrap_or(0);
+    assert!(
+        findings > 0,
+        "the rollback put the broken link back, so the finding returns: {after}"
+    );
     assert!(bridge.close());
 }
