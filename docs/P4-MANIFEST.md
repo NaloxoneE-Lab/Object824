@@ -186,6 +186,41 @@ uninstall --yes    -> removed ...；注册表项与目录都消失
 从**构建目录**里跑 install 时写注册表会得到 `ACCESS_DENIED`——同一条 Low 完整性规则。这不是 bug；
 install 因此把那一步当警告而不是假装成功。
 
+
+## 下载并校验：`o824 update --fetch`
+
+```bash
+o824.exe update --fetch --manifest-url <url>/manifest.json --base-url <url> --into <dir> [--public-key <hex>]
+```
+
+顺序是设计的一部分：**先下载清单、先验签，其它文件才开始下载**。所以一个恶意镜像发一份未签名的
+清单，后面什么都不会跟着下来。之后每个文件都要与清单里的哈希和大小一致，每个路径都要**留在目标目录
+内**——清单里写 `..`、绝对路径或盘符会被拒绝而不是照做（`safe_relative`，有 11 个反例测试）。
+
+它**不替换任何东西**。
+
+实测（2026-11-05，本地起一个裸 TCP 文件服务，真下载）：
+
+```
+fetching http://127.0.0.1:8765/manifest.json
+manifest verified (daf123367451214d), 2 files
+  o824-gui.exe
+  o824.exe
+staged in ...\staged: 2 files, every hash matches. Nothing was replaced.   ← exit 0
+
+# 把被服务的一个文件改掉，清单不动
+changed after download: o824.exe
+update: the downloaded files do not match the manifest                      ← exit 5
+```
+
+### 两个实现坑
+
+1. **urlmon 需要 COM**：`URLDownloadToFileW` 在线程没初始化 COM 时返回 `INET_E_DOWNLOAD_FAILURE`
+   （`0x800C0008`），看起来像网络坏了。现在下载前后各调一次 `CoInitializeEx`/`CoUninitialize`，
+   且只在"是这次调用初始化的"时才反初始化。
+2. **必须从安装位置运行**：从工作区跑（Low IL）下载同样失败——和托盘是同一条规则。帮助文本里
+   写明了这一点。
+
 ## 还没做的（P4 其余部分）
 
 - 安装器；自更新的"检查—下载—校验—替换"；崩溃恢复。

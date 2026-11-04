@@ -119,6 +119,59 @@ pub fn make_shortcut(target: &Path) -> Result<PathBuf, Error> {
     Ok(path)
 }
 
+/// Downloads one URL to one path.
+///
+/// `URLDownloadToFileW` is the platform's own downloader: it is already installed, it handles
+/// redirects and proxy settings the way the rest of Windows does, and it avoids adding a TLS
+/// stack to a launcher that only ever fetches release files from one host.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+pub fn download(url: &str, to: &Path) -> Result<(), Error> {
+    use windows::core::HSTRING;
+    use windows::Win32::System::Com::Urlmon::URLDownloadToFileW;
+    use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
+
+    if let Some(parent) = to.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            Error::new(
+                Code::Permission,
+                format!(
+                    "download: cannot create {:?}: {error}",
+                    parent.display().to_string()
+                ),
+            )
+        })?;
+    }
+    // urlmon is a COM component: calling it on a thread that never initialised COM fails with
+    // INET_E_DOWNLOAD_FAILURE, which looks exactly like a broken network. Initialise for the
+    // duration of the call, and only uninitialise when this call is the one that did it.
+    // SAFETY: no pointers; the balance of CoInitializeEx/CoUninitialize is decided by its own
+    // return value.
+    let initialised = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    let owned = initialised.is_ok() || initialised == windows::Win32::Foundation::S_FALSE;
+    let status = unsafe {
+        URLDownloadToFileW(
+            None,
+            &HSTRING::from(url),
+            &HSTRING::from(to.display().to_string()),
+            0,
+            None,
+        )
+    };
+    if owned {
+        unsafe { CoUninitialize() };
+    }
+    status.map_err(|error| Error::new(Code::Network, format!("download: {url} failed: {error}")))
+}
+
+#[cfg(not(windows))]
+pub fn download(url: &str, _to: &Path) -> Result<(), Error> {
+    Err(Error::new(
+        Code::Network,
+        format!("download: this platform has no downloader wired up ({url})"),
+    ))
+}
+
 /// Writes the per-user uninstall entry, and returns the key it wrote.
 #[cfg(windows)]
 #[allow(unsafe_code)]

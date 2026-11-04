@@ -16,19 +16,27 @@ use std::path::Path;
 use o824_errs::{Code, Error};
 
 use crate::flags::{FlagSet, FlagSpec};
-use crate::{exit_code_for, EXIT_FINDINGS, EXIT_OK, EXIT_USAGE};
+use crate::{exit_code_for, EXIT_FINDINGS, EXIT_OK, EXIT_STATE_DRIFT, EXIT_USAGE};
 
 const USAGE: &str = "\
 usage: o824 update --check --manifest <file> [--public-key <hex>|--public-key-file <path>]
                        [--installed <dir>] [--json]
+       o824 update --fetch --manifest-url <url> --base-url <url> --into <dir>
+                       [--public-key <hex>]
 
-  Reads a published manifest, verifies its signature, and says whether it describes a newer
-  version than this one. With --installed, it also says which local files differ from what
-  the manifest describes (that is a check of what you have, not of what you would get).
+  --check reads a manifest you already have: it verifies the signature, compares versions, and
+  with --installed says which local files differ.
 
-  Nothing is downloaded and nothing is replaced. Exit codes: 0 nothing newer, 1 something
-  newer, 2 the arguments or the manifest are wrong, 4 a file could not be read,
-  5 the manifest is not signed by the key you trust.
+  --fetch downloads a manifest, verifies its signature before anything else arrives, then
+  downloads every file it lists and checks each hash. A file path that would leave the target
+  directory is refused rather than followed.
+
+  Neither mode replaces anything. Exit codes: 0 nothing newer, 1 something newer, 2 the
+  arguments or the manifest are wrong, 4 a file could not be read, 5 a signature or a hash did
+  not match, 6 a download failed.
+
+  Run this from an installed location: a program started from a sandboxed build folder runs at
+  low integrity, and the system downloader refuses requests from it.
 ";
 
 /// `o824 update`.
@@ -43,6 +51,10 @@ pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i
 
     let mut flags = FlagSet::new(vec![
         FlagSpec::boolean("check"),
+        FlagSpec::boolean("fetch"),
+        FlagSpec::valued("manifest-url"),
+        FlagSpec::valued("base-url"),
+        FlagSpec::valued("into"),
         FlagSpec::valued("manifest"),
         FlagSpec::valued("public-key"),
         FlagSpec::valued("public-key-file"),
@@ -53,6 +65,11 @@ pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i
     if let Err(error) = flags.parse("update", args) {
         let _ = writeln!(stderr, "{error}");
         return exit_code_for(error.code);
+    }
+    // `--fetch` asks the same trust question about bytes that arrive over the network:
+    // download, verify, stop. Replacing is still not a flag.
+    if flags.flag("fetch") {
+        return fetch(&flags, stdout, stderr);
     }
     if !flags.flag("check") {
         let error = Error::new(
@@ -199,6 +216,147 @@ pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i
         EXIT_FINDINGS
     } else {
         EXIT_OK
+    }
+}
+
+/// Downloads a release into a directory and verifies every byte of it.
+///
+/// The order matters: the manifest is fetched and **verified before** anything else arrives, so
+/// a hostile mirror cannot hand out an unsigned list and have files follow it. Every file must
+/// then match the hash and size the manifest recorded, and every path must stay inside the
+/// target directory — a manifest that names `..` or an absolute path is refused, not followed.
+fn fetch(flags: &FlagSet, stdout: &mut dyn Write, stderr: &mut dyn Write) -> i32 {
+    let (Some(manifest_url), Some(base_url), Some(into)) = (
+        flags.value("manifest-url"),
+        flags.value("base-url"),
+        flags.value("into"),
+    ) else {
+        let error = Error::new(
+            Code::Usage,
+            "update --fetch: pass --manifest-url <url> --base-url <url> --into <dir>",
+        );
+        let _ = writeln!(stderr, "{error}");
+        return exit_code_for(error.code);
+    };
+    let directory = Path::new(into);
+    if let Err(error) = std::fs::create_dir_all(directory) {
+        let error = Error::new(
+            Code::Permission,
+            format!("update: cannot create {into:?}: {error}"),
+        );
+        let _ = writeln!(stderr, "{error}");
+        return exit_code_for(error.code);
+    }
+
+    let manifest_path = directory.join(o824_manifest::MANIFEST_FILE);
+    let _ = writeln!(stdout, "fetching {manifest_url}");
+    if let Err(error) = o824_install::download(manifest_url, &manifest_path) {
+        let _ = writeln!(stderr, "{error}");
+        return exit_code_for(error.code);
+    }
+
+    let manifest = match o824_manifest::load(&manifest_path) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            let _ = writeln!(stderr, "{error}");
+            return exit_code_for(error.code);
+        }
+    };
+    let trusted = flags.value("public-key").map(|text| text.trim().to_owned());
+    if let Err(error) = o824_manifest::verify_signature(&manifest, trusted.as_deref()) {
+        let _ = writeln!(stderr, "{error}");
+        let _ = writeln!(
+            stderr,
+            "update: nothing else was downloaded; the manifest is not signed by a key you trust"
+        );
+        return exit_code_for(error.code);
+    }
+    let key_id = manifest
+        .signature
+        .as_ref()
+        .map(|signature| signature.key_id.clone())
+        .unwrap_or_default();
+    let _ = writeln!(
+        stdout,
+        "manifest verified ({key_id}), {} files",
+        manifest.files.len()
+    );
+
+    for entry in &manifest.files {
+        let Some(relative) = safe_relative(&entry.path) else {
+            let _ = writeln!(
+                stderr,
+                "update: the manifest asks for {:?}, which is outside the target directory",
+                entry.path
+            );
+            return EXIT_STATE_DRIFT;
+        };
+        let url = format!("{}/{}", base_url.trim_end_matches('/'), entry.path);
+        let destination = directory.join(&relative);
+        let _ = writeln!(stdout, "  {}", entry.path);
+        if let Err(error) = o824_install::download(&url, &destination) {
+            let _ = writeln!(stderr, "{error}");
+            return exit_code_for(error.code);
+        }
+    }
+
+    let report = match o824_manifest::verify_files(&manifest, directory) {
+        Ok(report) => report,
+        Err(error) => {
+            let _ = writeln!(stderr, "{error}");
+            return exit_code_for(error.code);
+        }
+    };
+    for path in &report.changed {
+        let _ = writeln!(stderr, "changed after download: {path}");
+    }
+    for path in &report.missing {
+        let _ = writeln!(stderr, "missing after download: {path}");
+    }
+    if !report.is_clean() {
+        let _ = writeln!(
+            stderr,
+            "update: the downloaded files do not match the manifest"
+        );
+        return EXIT_STATE_DRIFT;
+    }
+
+    let _ = writeln!(
+        stdout,
+        "staged in {into}: {} files, every hash matches. Nothing was replaced.",
+        report.checked
+    );
+    let _ = writeln!(
+        stdout,
+        "to use it, quit O824 and copy these files over the installed ones; doing that \
+         automatically needs a decision about trusting the key first."
+    );
+    EXIT_OK
+}
+
+/// A manifest path that stays inside the target directory.
+///
+/// The manifest arrives from the network. `..`, an absolute path, or a drive prefix would let it
+/// write anywhere the user can write, which is the difference between a downloader and a
+/// delivery mechanism for someone else's files.
+pub fn safe_relative(path: &str) -> Option<std::path::PathBuf> {
+    let path = path.replace('\\', "/");
+    let path = path.trim_start_matches("./");
+    if path.is_empty() || path.starts_with('/') || path.contains(':') {
+        return None;
+    }
+    let mut relative = std::path::PathBuf::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => continue,
+            ".." => return None,
+            other => relative.push(other),
+        }
+    }
+    if relative.as_os_str().is_empty() {
+        None
+    } else {
+        Some(relative)
     }
 }
 

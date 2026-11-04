@@ -270,3 +270,57 @@ fn a_development_build_says_it_vouches_for_nothing() {
         assert!(out.contains("built into this binary"), "{out}");
     }
 }
+
+/// The manifest arrives over the network. A path that walks out of the target directory is the
+/// difference between a downloader and a way to write files wherever the user can write.
+#[test]
+fn a_manifest_path_cannot_escape_the_target() {
+    let allowed = [
+        "o824.exe",
+        "o824-gui.exe",
+        "docs/readme.txt",
+        "./o824.exe",
+        "a/b/c.dll",
+    ];
+    for path in allowed {
+        assert!(
+            super::update_cmd::safe_relative(path).is_some(),
+            "{path:?} should be accepted"
+        );
+    }
+
+    let refused = [
+        "../o824.exe",
+        "docs/../../escape.exe",
+        "../../../../Windows/System32/evil.dll",
+        "/absolute/path.dll",
+        "C:/Windows/System32/evil.dll",
+        "c:relative.dll",
+        "..",
+        ".",
+        "",
+        "docs/..",
+    ];
+    for path in refused {
+        assert!(
+            super::update_cmd::safe_relative(path).is_none(),
+            "{path:?} must be refused"
+        );
+    }
+}
+
+/// Windows separators are normalised before the check, so a manifest written for this platform
+/// cannot sneak past it.
+#[test]
+fn backslashes_are_normalised_before_the_check() {
+    assert!(super::update_cmd::safe_relative(r"docs\readme.txt").is_some());
+    assert!(super::update_cmd::safe_relative(r"docs\..\..\evil.exe").is_none());
+}
+
+#[test]
+fn fetching_without_the_urls_is_a_usage_error() {
+    let scratch = Scratch::new("fetch-usage");
+    let (code, _, err) = run(&["--fetch", "--into", scratch.path().to_str().expect("path")]);
+    assert_eq!(code, EXIT_USAGE, "{err}");
+    assert!(err.contains("--manifest-url"), "{err}");
+}
