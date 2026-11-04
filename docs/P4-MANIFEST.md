@@ -77,6 +77,31 @@ o824 update --check --manifest dist/manifest.json --public-key <hex> [--installe
 不给 `--public-key` 时它只会用清单里自带的钥匙验，输出会明说 `self-signed only: the key came
 with the manifest`——那只能证明文件没被截断，证明不了是谁发的。这个区别写在屏幕上，不是藏在文档里。
 
+## 内置公钥：让"信任谁"变成产品决定
+
+`o824 update --check` 不给钥匙时，用**编进二进制的那把**：
+
+```bash
+O824_RELEASE_KEY=<公钥 hex> cargo build --release --bin o824
+```
+
+实测（2026-11-04）：
+
+```
+signature: ok (verified against the key built into this binary (091ac5a6625e321b…))
+a newer release is published: 1 files, nothing downloaded        ← exit 1
+
+# 换一把钥匙签的清单
+manifest: it is signed by 5d00a50a23936fff, not by the expected key f89ed3222923ad20  ← exit 5
+```
+
+**没有内置钥匙是正常状态，不是降级**：开发构建不能为任何发布背书，所以它明说
+`self-signed only`，而不是拿下载文件自带的钥匙冒充信任。
+
+一个坑：`option_env!` 不会因为环境变量变化自动重编译——`crates/o824-manifest/build.rs`
+里加了 `rerun-if-env-changed=O824_RELEASE_KEY`。没有它，"先构建无钥匙版、再构建有钥匙版"
+会**静默留住无钥匙的二进制**，而这类静默错误正是可信钥匙最不该出的。
+
 ## 还没做的（P4 其余部分）
 
 - 安装器；自更新的"检查—下载—校验—替换"；崩溃恢复。

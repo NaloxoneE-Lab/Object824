@@ -18,11 +18,31 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets -- -D warnings
 
-      # The test step is instrumented on purpose: a failing test binary only
-      # reports "exit code 1" in the job's conclusion, and the job log needs an
-      # authenticated download. Emitting the failing test names as workflow
-      # annotations puts them in the public checks API, so a failure is
-      # diagnosable without a token.
+      # A build with a release key must compile, and must then refuse a manifest signed by a
+      # different key. The key here is thrown away with the runner: CI has no access to the
+      # real release key, and this exercises the trust path without pretending to sign a real
+      # release.
+      - name: release key path
+        shell: pwsh
+        run: |
+          cargo build --bin o824
+          $key = & ./target/debug/o824.exe manifest-keygen
+          $public = ($key | Select-String 'public key: (\w+)').Matches[0].Groups[1].Value
+          $env:O824_RELEASE_KEY = $public
+          cargo build --bin o824
+          $manifest = ".ci-manifest"
+          New-Item -ItemType Directory -Force -Path $manifest | Out-Null
+          Set-Content -Path (Join-Path $manifest "o824.exe") -Value "not a real binary"
+          $other = ".ci-other.hex"
+          & ./target/debug/o824.exe manifest-keygen --out $other | Out-Null
+          & ./target/debug/o824.exe manifest --root $manifest --out (Join-Path $manifest "manifest.json") --version 9.9.9 --key-file $other | Out-Null
+          & ./target/debug/o824.exe update --check --manifest (Join-Path $manifest "manifest.json") --version 0.1.0
+          if ($LASTEXITCODE -ne 5) {
+            Write-Output "::error::a manifest signed by another key must exit 5, got $LASTEXITCODE"
+            exit 1
+          }
+          Write-Output "release key path: a foreign signature was refused with exit 5"
+
       - name: cargo test
         shell: pwsh
         run: |

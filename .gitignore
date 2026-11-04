@@ -29,3 +29,5 @@ apps/o824-gui/gen/
 o824-gui.log
 apps/o824-gui/*.png
 apps/o824-gui/shot*.png
+.ci-manifest
+.ci-other.hex

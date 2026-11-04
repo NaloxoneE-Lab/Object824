@@ -228,3 +228,45 @@ fn the_json_form_carries_the_same_answers() {
     assert_eq!(value["newer"], true);
     assert_eq!(value["trusted"], true);
 }
+
+/// The trust rule, tested directly because the built-in key is a compile-time constant: a
+/// test cannot rebuild the binary with a key, but it can hand the resolver one.
+#[test]
+fn an_explicit_key_wins_over_the_built_in_one() {
+    let trust = super::update_cmd::resolve_trust(Some("aa".repeat(32)), Some("bb"));
+    assert_eq!(trust, super::update_cmd::Trust::Named("aa".repeat(32)));
+}
+
+#[test]
+fn without_an_argument_the_built_in_key_is_used() {
+    let trust = super::update_cmd::resolve_trust(None, Some("bb".repeat(32).leak()));
+    assert_eq!(trust, super::update_cmd::Trust::BuiltIn("bb".repeat(32)));
+}
+
+#[test]
+fn a_build_without_a_key_trusts_nobody_but_itself() {
+    let trust = super::update_cmd::resolve_trust(None, None);
+    assert_eq!(trust, super::update_cmd::Trust::Nobody);
+}
+
+#[test]
+fn an_empty_argument_falls_through_to_the_built_in_key() {
+    let trust = super::update_cmd::resolve_trust(Some(String::new()), Some("cc"));
+    assert_eq!(trust, super::update_cmd::Trust::BuiltIn("cc".to_owned()));
+}
+
+/// This development build has no release key compiled in, so the honest wording must appear.
+/// A release build flips this expectation by setting `O824_RELEASE_KEY`.
+#[test]
+fn a_development_build_says_it_vouches_for_nothing() {
+    let scratch = Scratch::new("devbuild");
+    let (manifest, _, _) = published(&scratch, "9.9.9");
+
+    let (code, out, _) = run(&["--check", "--manifest", &manifest, "--version", "0.1.0"]);
+    assert_eq!(code, EXIT_FINDINGS, "{out}");
+    if o824_manifest::built_in_key().is_none() {
+        assert!(out.contains("self-signed only"), "{out}");
+    } else {
+        assert!(out.contains("built into this binary"), "{out}");
+    }
+}

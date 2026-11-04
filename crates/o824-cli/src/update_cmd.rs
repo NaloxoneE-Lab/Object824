@@ -76,28 +76,34 @@ pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i
         }
     };
 
-    // The trusted key: an argument, a file, or nothing. With nothing, the signature can only
-    // be checked against the key the manifest carries — which proves the file is intact and
-    // proves nothing about who wrote it. That distinction is printed, not assumed.
-    let trusted = flags.value("public-key").map(str::to_owned).or_else(|| {
-        flags
-            .value("public-key-file")
-            .and_then(|path| std::fs::read_to_string(path).ok())
-    });
-    let trusted = match trusted {
-        Some(text) => {
-            let key = text
-                .trim()
+    // Who do we trust? A key the caller names, else the key compiled into this build, else
+    // nobody — in which case the signature is only checked against the key the manifest
+    // carries, which proves the file is intact and proves nothing about who wrote it.
+    let from_argument = flags
+        .value("public-key")
+        .map(str::to_owned)
+        .or_else(|| {
+            flags
+                .value("public-key-file")
+                .and_then(|path| std::fs::read_to_string(path).ok())
+        })
+        .map(|text| {
+            text.trim()
                 .trim_start_matches("public key:")
                 .trim()
-                .to_owned();
-            if let Err(error) = o824_manifest::verify_signature(&manifest, Some(&key)) {
+                .to_owned()
+        });
+    let trust = resolve_trust(from_argument, o824_manifest::built_in_key());
+
+    let trusted = match &trust {
+        Trust::Named(key) | Trust::BuiltIn(key) => {
+            if let Err(error) = o824_manifest::verify_signature(&manifest, Some(key)) {
                 let _ = writeln!(stderr, "{error}");
                 return exit_code_for(error.code);
             }
-            Some(key)
+            Some(key.clone())
         }
-        None => {
+        Trust::Nobody => {
             if let Err(error) = o824_manifest::verify_signature(&manifest, None) {
                 let _ = writeln!(stderr, "{error}");
                 return exit_code_for(error.code);
@@ -119,9 +125,13 @@ pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i
         _ => false,
     };
 
-    let signature_note = match &trusted {
-        Some(key) => format!("verified against {key:.16}…"),
-        None => "self-signed only: the key came with the manifest".to_owned(),
+    let signature_note = match (&trust, &trusted) {
+        (Trust::BuiltIn(key), _) => format!(
+            "verified against the key built into this binary ({}…)",
+            &key[..16.min(key.len())]
+        ),
+        (Trust::Named(key), _) => format!("verified against {key:.16}…"),
+        (Trust::Nobody, _) => "self-signed only: the key came with the manifest".to_owned(),
     };
 
     let mut differences = Vec::new();
@@ -152,6 +162,11 @@ pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i
             "newer": newer,
             "keyId": manifest.signature.as_ref().map(|signature| signature.key_id.clone()),
             "trusted": trusted.is_some(),
+            "trust": match &trust {
+                Trust::BuiltIn(_) => "built-in",
+                Trust::Named(_) => "argument",
+                Trust::Nobody => "self-signed",
+            },
             "files": manifest.files.len(),
             "differences": differences,
         });
@@ -184,6 +199,30 @@ pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i
         EXIT_FINDINGS
     } else {
         EXIT_OK
+    }
+}
+
+/// Where the trust for a check comes from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Trust {
+    /// A key the caller named with `--public-key` or `--public-key-file`.
+    Named(String),
+    /// The key compiled into this build.
+    BuiltIn(String),
+    /// No key at all: only the manifest's own key is available.
+    Nobody,
+}
+
+/// Decides which key to trust.
+///
+/// An explicit key wins over the built-in one, because someone checking a build other than
+/// this one should not have to rebuild to say so. The built-in key is the fallback that makes
+/// `o824 update --check` meaningful for an ordinary user: no argument, still real trust.
+pub fn resolve_trust(from_argument: Option<String>, built_in: Option<&str>) -> Trust {
+    match (from_argument, built_in) {
+        (Some(key), _) if !key.is_empty() => Trust::Named(key),
+        (_, Some(key)) => Trust::BuiltIn(key.to_owned()),
+        _ => Trust::Nobody,
     }
 }
 

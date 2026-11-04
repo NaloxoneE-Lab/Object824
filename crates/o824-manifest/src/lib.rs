@@ -29,6 +29,35 @@ pub const FORMAT: &str = "o824-manifest/v1";
 /// The file name a published manifest uses.
 pub const MANIFEST_FILE: &str = "manifest.json";
 
+/// The release key this binary trusts, injected at build time.
+///
+/// A release build sets `O824_RELEASE_KEY` to the hex public key that signs published
+/// manifests; an ordinary `cargo build` leaves it empty. Empty is a real state, not a
+/// degraded one: a development build cannot vouch for any release, and the check says so
+/// instead of accepting whatever key a downloaded file happens to carry.
+///
+/// This is the whole of "who do we trust": one constant, compiled in, impossible to change
+/// after the fact without rebuilding.
+pub const BUILD_KEY: &str = match option_env!("O824_RELEASE_KEY") {
+    Some(key) => key,
+    None => "",
+};
+
+/// The release key this build trusts, if it has one.
+///
+/// A key that does not parse is treated as absent rather than as a reason to fail at start:
+/// a broken build should be obvious at the moment trust is used, not before the tool runs.
+pub fn built_in_key() -> Option<&'static str> {
+    let key = BUILD_KEY.trim();
+    if key.is_empty() {
+        return None;
+    }
+    let parsed = unhex(key, "built-in public key").ok()?;
+    let bytes: [u8; 32] = parsed.as_slice().try_into().ok()?;
+    VerifyingKey::from_bytes(&bytes).ok()?;
+    Some(key)
+}
+
 /// The only signature algorithm accepted. Named in the format so a future algorithm can be
 /// added without guessing at the old one.
 pub const ALGORITHM: &str = "ed25519";
