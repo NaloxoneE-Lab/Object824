@@ -27,7 +27,7 @@ Tauri, raw Win32 and WinForms windows, all behaved identically. A self-signed ce
 changed nothing either, which ruled out "signature trust" as the cause.
 
 The practical rule that came out of it: **run the launcher from an install location**
-(`scripts/install-local.ps1` puts it in `%LOCALAPPDATA%\o824`), not from the build tree.
+(`o824 install` puts it in `%LOCALAPPDATA%\o824`), not from the build tree.
 
 ## Why it is kept
 

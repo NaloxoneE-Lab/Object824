@@ -47,5 +47,5 @@
 5. **托盘：已恢复**（2026-11-04 深夜）。之前删掉它是因为图标从未出现，而根因不是代码：
    DSH 工作区里的文件带 **Low 强制完整性标签**，从这种文件启动的进程以 Low IL 运行，而通知区域是
    Medium——UIPI 不允许低完整性进程注册，于是 `Shell_NotifyIcon` 返回 `ACCESS_DENIED`。同一个 exe
-   放到 `%LOCALAPPDATA%` 或 D 盘别处就正常。**用 `scripts/install-local.ps1` 装到
+   放到 `%LOCALAPPDATA%` 或 D 盘别处就正常。**用 `o824 install` 装到
    `%LOCALAPPDATA%\o824` 再从那里运行**，不要从构建目录直接跑。详见 `docs/TRAY-INVESTIGATION.md`。
