@@ -24,7 +24,6 @@
 
 use std::sync::Mutex;
 
-use tauri::Manager;
 
 use o824_bridge::{Bridge, Options};
 use o824_present::Locale;
@@ -247,11 +246,13 @@ fn only_instance() -> bool {
 
 fn main() {
     log_line("=== start ===");
+    log_token();
     if !only_instance() {
         log_line("another window is open; brought it to the front and left");
         return;
     }
     log_line("=== start ===");
+    log_token();
     if !only_instance() {
         log_line("another window is open; brought it to the front and left");
         return;
@@ -306,15 +307,9 @@ fn main() {
                 builder = builder.data_directory(directory);
             }
             builder.build()?;
-            // The tray is built on a best-effort basis and is **not** load-bearing: on this
-            // machine Windows reports the icon created and then shows nothing, so the window
-            // must not hide into a tray that is not there. Closing still quits.
-            if let Err(error) = build_tray(app) {
-                log_line(&format!("tray: not created: {error}"));
-            }
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = native_tray(&window);
-            }
+            // No tray: on this machine the shell refuses every registration (see
+            // docs/P3-STATUS.md). Closing the window quits, which is what the window's own
+            // close button promises.
             Ok(())
         })
         .manage(Kernel(Mutex::new(None)))
@@ -330,14 +325,19 @@ fn main() {
             form_action,
             install_help
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
     });
 
     // §7.4: a window that cannot start must say where the command line is, because the
     // command line still works. Tauri reports a failed setup by panicking, so the catch is
     // around the call rather than on its result.
     match started {
-        Ok(Ok(())) => log_line("=== window closed normally ==="),
+        Ok(Ok(app)) => {
+            // The tray is registered once the event loop runs: the shell talks to the window
+            // while adding the icon, and a thread still inside `setup` is not answering.
+            app.run(|_, _| {});
+            log_line("=== window closed normally ===");
+        }
         Ok(Err(error)) => {
             log_line(&format!("tauri error: {error}"));
             report_start_failure(&error.to_string());
@@ -773,165 +773,45 @@ struct FoundRow {
 /// `O824_KERNEL` wins, then a copy beside the window, then the workspace build the window
 /// was built from, then `PATH`. A window that cannot find its kernel says so and points at
 /// the command line rather than guessing.
-/// Opens a URL in the user's browser.
-//
-// One ShellExecuteW call: no plugin, no bundler, and the URL is a constant in this file.
+
+
+/// Records which kind of process this is: a tray icon is refused to a restricted token, and
+/// knowing that from the log saves another round of guessing.
 #[allow(unsafe_code)]
 #[cfg(windows)]
-fn open_url(url: &str) {
-    use windows::core::{HSTRING, PCWSTR};
-    use windows::Win32::UI::Shell::ShellExecuteW;
-    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+fn log_token() {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::Security::{GetTokenInformation, TokenIsRestricted, TOKEN_QUERY};
+    use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
-    let verb = HSTRING::from("open");
-    let target = HSTRING::from(url);
-    // SAFETY: four owned strings and a window handle of 0; nothing outlives the call.
+    let mut token = Default::default();
+    // SAFETY: the pseudo-handle is always valid, and the token is closed before returning.
     unsafe {
-        ShellExecuteW(
-            None,
-            &verb,
-            &target,
-            PCWSTR::null(),
-            PCWSTR::null(),
-            SW_SHOWNORMAL,
-        );
-    }
-}
-
-#[cfg(not(windows))]
-fn open_url(url: &str) {
-    let _ = url;
-}
-
-/// Writes the icon's pixels next to the log, so "the icon is invisible" can be checked
-/// against the image itself instead of guessed at.
-fn dump_icon(image: &tauri::image::Image<'_>) {
-    let width = image.width();
-    let height = image.height();
-    let rgba = image.rgba();
-    let opaque = rgba.chunks(4).filter(|pixel| pixel[3] > 8).count();
-    log_line(&format!(
-        "icon: {width}x{height} bytes={} opaque_pixels={opaque}",
-        rgba.len()
-    ));
-    let Some(directory) = std::env::current_exe()
-        .ok()
-        .and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
-    else {
-        return;
-    };
-    let path = directory.join("tray-icon.rgba");
-    let _ = std::fs::write(path, rgba);
-}
-
-/// Registers the notification icon with the shell directly, and says what the shell answered.
-///
-/// This exists because Tauri reports success and the icon is not there: the only way to know
-/// which layer is lying is to ask the shell ourselves and write down the answer. If this
-/// succeeds the icon appears even though Tauri's copy does not; if it fails, the error code
-/// names the reason.
-#[allow(unsafe_code)]
-#[cfg(windows)]
-fn native_tray(window: &tauri::WebviewWindow) -> bool {
-    use windows::Win32::Foundation::{GetLastError, HWND};
-    use windows::Win32::UI::Shell::{
-        Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NOTIFYICONDATAW,
-    };
-    use windows::Win32::UI::WindowsAndMessaging::{LoadIconW, IDI_APPLICATION, WM_APP};
-
-    let Ok(handle) = window.hwnd() else {
-        log_line("native tray: the window has no handle");
-        return false;
-    };
-    let hwnd = HWND(handle.0 as *mut core::ffi::c_void);
-    let mut data = NOTIFYICONDATAW::default();
-    data.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
-    data.hWnd = hwnd;
-    data.uID = 1;
-    data.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
-    data.uCallbackMessage = WM_APP + 1;
-    // SAFETY: a system icon needs no ownership, and the tooltip is copied into the struct.
-    unsafe {
-        data.hIcon = LoadIconW(None, IDI_APPLICATION).unwrap_or_default();
-        let tip: Vec<u16> = "O824 ".encode_utf16().collect();
-        data.szTip[..tip.len()].copy_from_slice(&tip);
-        let added = Shell_NotifyIconW(NIM_ADD, &data).as_bool();
-        log_line(&format!(
-            "native tray: added={added} error={} cbSize={}",
-            GetLastError().0,
-            data.cbSize
-        ));
-        added
-    }
-}
-
-#[cfg(not(windows))]
-fn native_tray(_window: &tauri::WebviewWindow) -> bool {
-    false
-}
-
-/// A tray icon: show the window, or quit.
-///
-/// The point is not decoration. This tool is opened when something is broken, and closing
-/// the window should not mean losing the diagnosis that was on screen; a tray keeps it one
-/// click away and gives people the way out they expect from a background tool.
-fn build_tray(app: &tauri::App) -> tauri::Result<()> {
-    use tauri::menu::{Menu, MenuItem};
-    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-
-    let show = MenuItem::with_id(app, "show", "Show O824", true, None::<&str>)?;
-    // Checking for a new version means opening the page that publishes it, never replacing
-    // this executable: the build is unsigned, and an unsigned binary that updates itself is
-    // the one thing a launcher must not do.
-    let updates = MenuItem::with_id(app, "updates", "Check for updates…", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &updates, &quit])?;
-
-    let icon = app.default_window_icon().cloned();
-    if let Some(image) = &icon {
-        dump_icon(image);
-    }
-    log_line(&format!(
-        "tray: default_window_icon={}",
-        match &icon {
-            Some(image) => format!("{}x{}", image.width(), image.height()),
-            None => "none".to_owned(),
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).is_err() {
+            log_line("token: cannot open");
+            return;
         }
-    ));
-    TrayIconBuilder::new()
-        .icon(icon.ok_or_else(|| {
-            tauri::Error::AssetNotFound("the window icon is missing".to_owned())
-        })?)
-        .menu(&menu)
-        .tooltip("O824")
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "quit" => app.exit(0),
-            "updates" => open_url("https://github.com/NaloxoneE-Lab/Object824/releases"),
-            "show" => {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
-            }
-            _ => {}
-        })
-        .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
-            } = event
-            {
-                if let Some(window) = tray.app_handle().get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
-            }
-        })
-        .build(app)?;
-    log_line("tray: created");
-    Ok(())
+        let mut restricted = 0u32;
+        let mut size = 0u32;
+        let _ = GetTokenInformation(
+            token,
+            TokenIsRestricted,
+            Some(&mut restricted as *mut u32 as *mut _),
+            std::mem::size_of::<u32>() as u32,
+            &mut size,
+        );
+        let _ = CloseHandle(token);
+        log_line(&format!(
+            "token: restricted={} session={} user={}",
+            restricted != 0,
+            std::process::id(),
+            std::env::var("USERNAME").unwrap_or_default()
+        ));
+    }
 }
+
+#[cfg(not(windows))]
+fn log_token() {}
 
 /// Where the kernel should look, when this window is being exercised against a fixture.
 ///
