@@ -68,6 +68,21 @@ pub enum FirstUse {
 }
 
 impl FirstUse {
+    /// The verb the main button performs.
+    ///
+    /// The sentence and the action come from the same place on purpose: a button labelled
+    /// "Start it" that runs a repair is the kind of mismatch a user cannot see and cannot
+    /// forgive. `install` and `choose` are honest about not being wired yet — the caller
+    /// decides how to say so.
+    pub fn action(&self) -> &'static str {
+        match self {
+            FirstUse::NothingInstalled(_) => "install",
+            FirstUse::Ready(_) => "start",
+            FirstUse::Broken(_) => "repair",
+            FirstUse::Several(_) => "choose",
+        }
+    }
+
     /// The copy for this state.
     pub fn copy(&self) -> &Copy {
         match self {
@@ -99,6 +114,21 @@ pub fn step_name(kind: &str, locale: Locale) -> String {
     let key = format!("step.{kind}");
     let known = catalog().iter().any(|(candidate, _, _)| *candidate == key);
     text(locale, if known { &key } else { "step.other" })
+}
+
+/// The label for starting a form.
+pub fn start_label(locale: Locale) -> String {
+    text(locale, "action.start")
+}
+
+/// The label for stopping a form.
+pub fn stop_label(locale: Locale) -> String {
+    text(locale, "action.stop")
+}
+
+/// The label for the link that opens a running web form.
+pub fn open_label(locale: Locale) -> String {
+    text(locale, "action.open")
 }
 
 /// The button that starts the repair.
@@ -291,6 +321,14 @@ fn catalog() -> &'static [(&'static str, &'static str, &'static str)] {
         ("next.update", "Update DeepSeek Harness", "更新 DeepSeek Harness"),
         ("next.choose", "Choose the right one", "选对那一个"),
         // The repair flow (§20.3): the safety net has to be visible before anything moves.
+        ("action.start", "Start it", "启动"),
+        ("action.stop", "Stop it", "停止"),
+        ("action.starting", "Starting…", "正在启动…"),
+        ("action.stopping", "Stopping…", "正在停止…"),
+        ("action.started", "It is running.", "已经在运行。"),
+        ("action.stopped", "It is stopped.", "已经停止。"),
+        ("action.open", "Open it", "打开"),
+        ("action.already_running", "It is already running.", "它已经在运行。"),
         ("repair.backup", "A backup is made first (about 2 MB, restorable in one click).", "修复前会先备份（约 2 MB，可一键还原）。"),
         ("repair.steps", "What will change:", "将要做的事："),
         ("repair.confirm", "Fix it now", "开始修复"),
@@ -475,6 +513,41 @@ mod tests {
 
         let unknown = describe("F99", true, Locale::En);
         assert_eq!(unknown.headline, text(Locale::En, "check.unknown.headline"));
+    }
+
+    /// The button's label and its verb come from the same state, so they cannot disagree.
+    #[test]
+    fn a_button_says_what_it_does() {
+        let cases = [
+            (first_use(&[], Locale::En), "install"),
+            (
+                first_use(
+                    &[Installation {
+                        kind: "desktop".into(),
+                        version: "1".into(),
+                        findings: 0,
+                        repairable: 0,
+                    }],
+                    Locale::En,
+                ),
+                "start",
+            ),
+            (
+                first_use(
+                    &[Installation {
+                        kind: "desktop".into(),
+                        version: "1".into(),
+                        findings: 1,
+                        repairable: 1,
+                    }],
+                    Locale::En,
+                ),
+                "repair",
+            ),
+        ];
+        for (state, expected) in cases {
+            assert_eq!(state.action(), expected, "{state:?}");
+        }
     }
 
     /// §20.1: the three first-use paths, each with its own main action.

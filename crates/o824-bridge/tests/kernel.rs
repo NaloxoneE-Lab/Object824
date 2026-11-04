@@ -232,3 +232,46 @@ fn rollback_restores_the_snapshot_it_covers_and_says_nothing_more() {
     );
     assert!(bridge.close());
 }
+
+/// §21.5: starting and stopping are plan actions, and the window can run them without a
+/// second code path.
+///
+/// The fixture's `DeepSeek Harness.exe` is a placeholder, not a program, so applying a start
+/// here fails — and that failure is the part worth pinning: it names the executable and the
+/// OS error instead of dying silently. The real spawn is covered where a real process can be
+/// spawned: `o824-formproc`'s own tests, which use a stand-in that stays alive.
+#[test]
+fn start_and_stop_are_plans_and_a_bad_executable_fails_loudly() {
+    let fixture = o824_fixtures::build("ok").expect("fixture");
+    let mut bridge = Bridge::start(&options_for_fixture(&fixture)).expect("start");
+
+    let start = bridge.plan("i1", "start").expect("start plan");
+    let steps = start["steps"].as_array().expect("steps");
+    assert_eq!(steps.len(), 1, "{start}");
+    assert_eq!(steps[0]["kind"], "start-desktop", "{start}");
+
+    let stop = bridge.plan("i1", "stop").expect("stop plan");
+    let steps = stop["steps"].as_array().expect("steps");
+    assert_eq!(steps[0]["kind"], "stop-desktop", "{stop}");
+    assert_eq!(
+        steps[0]["args"][0].as_str().expect("install id"),
+        "installId=i1",
+        "{stop}"
+    );
+
+    // The placeholder cannot be executed, and the message has to say which file it tried.
+    let error = bridge
+        .apply(&start)
+        .expect_err("a placeholder is not a program");
+    match error {
+        BridgeError::Kernel { code, message } => {
+            assert!(code.starts_with("E_"), "{code}");
+            assert!(
+                message.contains("DeepSeek Harness.exe"),
+                "the message names the executable: {message}"
+            );
+        }
+        other => panic!("unexpected error: {other:?}"),
+    }
+    assert!(bridge.close());
+}

@@ -26,6 +26,9 @@ const elements = {
   stepsHeading: document.getElementById("steps-heading"),
   confirmStart: document.getElementById("confirm-start"),
   confirmCancel: document.getElementById("confirm-cancel"),
+  formButtons: document.getElementById("form-buttons"),
+  formStop: document.getElementById("form-stop"),
+  formUrl: document.getElementById("form-url"),
   copy: document.getElementById("copy"),
   status: document.getElementById("status"),
 };
@@ -39,12 +42,7 @@ const CHECKING = "checking…";
 function setHeadline(copy) {
   elements.headline.textContent = copy.headline;
   elements.reason.textContent = copy.reason;
-  if (copy.next_step) {
-    elements.primary.textContent = copy.next_step;
-    elements.primary.hidden = false;
-  } else {
-    elements.primary.hidden = true;
-  }
+  setPrimary(copy);
 }
 
 /// The geometry, so a layout problem is measured instead of guessed from a screenshot.
@@ -67,6 +65,19 @@ function layoutMeasurements() {
     row: rect(row),
     detail: rect(detail),
   };
+}
+
+/// Offers the counterpart action: stopping what is running, and opening what has an address.
+async function showFormButtons() {
+  try {
+    const labels = await invoke("form_action", { installId: "", action: "labels" });
+    elements.formStop.textContent = labels.stop_label;
+    elements.formUrl.textContent = labels.open_label;
+  } catch (error) {
+    /* labels are cosmetic; the actions themselves report their own errors */
+  }
+  elements.formButtons.hidden = false;
+  elements.formStop.hidden = false;
 }
 
 function drawRows(rows) {
@@ -172,6 +183,7 @@ async function start() {
     );
     if (detail) detail.textContent = "click to check";
   });
+  chosen = null;
   try {
     setHeadline(
       await invoke("summarize", {
@@ -207,6 +219,8 @@ async function diagnoseRow(install) {
     if (detail()) detail().textContent = detailFor(result);
     elements.status.textContent = "";
     lastDiagnosed = install;
+    showFormButtons();
+    showFormButtons();
     setHeadline(
       await invoke("summarize", { layout: layoutMeasurements(), installs: [result] }),
     );
@@ -260,7 +274,7 @@ async function runRepair() {
     elements.headline.textContent = result.headline;
     elements.reason.textContent = result.reason;
     elements.primary.hidden = !result.next_step;
-    if (result.next_step) elements.primary.textContent = result.next_step;
+    setPrimary({ next_step: result.next_step, action: result.findings === 0 ? "start" : "repair" });
     elements.status.textContent = result.applied
       ? result.findings === 0
         ? "done"
@@ -292,12 +306,41 @@ async function refreshRow(install) {
   }
 }
 
-elements.primary?.addEventListener("click", () => {
-  if (chosen) {
-    void askForPlan(chosen);
+/// What the main button is currently for, from the copy crate's own decision.
+let primaryAction = "";
+
+function setPrimary(copy) {
+  if (!copy.next_step) {
+    elements.primary.hidden = true;
+    primaryAction = "";
     return;
   }
-  void askForPlan(lastDiagnosed);
+  elements.primary.textContent = copy.next_step;
+  elements.primary.hidden = false;
+  primaryAction = copy.action || "";
+}
+
+elements.primary?.addEventListener("click", () => {
+  const target = chosen || lastDiagnosed;
+  switch (primaryAction) {
+    case "start":
+      if (target) void runFormAction("start");
+      break;
+    case "repair":
+      if (target) void askForPlan(target);
+      break;
+    case "install":
+      // The install path is not wired yet; saying so is better than a button that does
+      // nothing, and §20.2 asks for a next step rather than an excuse.
+      elements.status.textContent =
+        "installing from the window is not available yet — the command line can do it";
+      break;
+    case "choose":
+      elements.installations.querySelector(".row")?.focus();
+      break;
+    default:
+      break;
+  }
 });
 
 elements.confirmCancel?.addEventListener("click", () => {
@@ -306,6 +349,30 @@ elements.confirmCancel?.addEventListener("click", () => {
 });
 
 elements.confirmStart?.addEventListener("click", () => void runRepair());
+
+/// Starts or stops the chosen form, then says what state it is in.
+async function runFormAction(action) {
+  const install = chosen || lastDiagnosed;
+  if (!install) return;
+  elements.status.textContent = action === "start" ? "starting…" : "stopping…";
+  elements.formStop.disabled = true;
+  try {
+    const result = await invoke("form_action", { installId: install.id, action });
+    elements.formStop.textContent = result.stop_label;
+    elements.formUrl.textContent = result.open_label;
+    elements.formUrl.href = result.url || "#";
+    elements.formUrl.hidden = !result.url;
+    elements.status.textContent = result.message;
+    chosen = install;
+  } catch (error) {
+    elements.status.textContent = "";
+    showFailure(String(error));
+  } finally {
+    elements.formStop.disabled = false;
+  }
+}
+
+elements.formStop?.addEventListener("click", () => void runFormAction("stop"));
 
 elements.copy?.addEventListener("click", async () => {
   try {

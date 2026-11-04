@@ -229,3 +229,19 @@ h1 {
   gap: 10px;
   justify-content: flex-end;
 }
+
+.actions.inline {
+  justify-content: flex-start;
+  margin-top: 14px;
+}
+
+.link {
+  color: var(--accent);
+  text-decoration: none;
+  align-self: center;
+  font-weight: 600;
+}
+
+.link:hover {
+  text-decoration: underline;
+}

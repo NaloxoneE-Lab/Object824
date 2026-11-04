@@ -37,6 +37,8 @@ struct Screen {
     next_step: String,
     /// The installations the kernel found, already described for a person.
     installations: Vec<InstallRow>,
+    /// What the main button does: `install`, `start`, `repair`, `choose`, or empty.
+    action: String,
 }
 
 /// One installation, as the window shows it.
@@ -52,6 +54,23 @@ struct InstallRow {
 
 /// The kernel this window talks to, kept for the life of the window.
 struct Kernel(Mutex<Option<Bridge>>);
+
+/// What a start or a stop produced.
+#[derive(Serialize)]
+struct RunningView {
+    /// True when the form is running now.
+    running: bool,
+    /// What the start/stop button should say next.
+    start_label: String,
+    /// What the other button should say.
+    stop_label: String,
+    /// What the link to a running web form says.
+    open_label: String,
+    /// The address to open, for a form that has one.
+    url: Option<String>,
+    /// The sentence for the user.
+    message: String,
+}
 
 /// The plan waiting for a yes or a no.
 ///
@@ -215,7 +234,13 @@ fn main() {
         .manage(Kernel(Mutex::new(None)))
         .manage(PendingPlan::default())
         .invoke_handler(tauri::generate_handler![
-            list, checking, diagnose, summarize, repair_plan, repair_apply
+            list,
+            checking,
+            diagnose,
+            summarize,
+            repair_plan,
+            repair_apply,
+            form_action
         ])
         .run(tauri::generate_context!())
     });
@@ -366,7 +391,72 @@ fn checking(locale_tag: Option<String>) -> Screen {
         reason: copy.reason.clone(),
         next_step: String::new(),
         installations: Vec::new(),
+        action: String::new(),
     }
+}
+
+/// Starts or stops the form an installation provides.
+///
+/// §21.5 again: both are plan actions, so the window asks for a plan and applies it — the
+/// same path a repair takes, with no second implementation to drift.
+#[tauri::command]
+async fn form_action(install_id: String, action: String) -> Result<RunningView, String> {
+    let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
+    // `labels` is not an action on the machine; it is how the page gets the words for the
+    // two buttons without carrying a second copy of the catalog in JavaScript.
+    if action == "labels" {
+        return Ok(RunningView {
+            running: false,
+            url: None,
+            message: String::new(),
+            start_label: o824_present::start_label(locale),
+            stop_label: o824_present::stop_label(locale),
+            open_label: o824_present::open_label(locale),
+        });
+    }
+    if action != "start" && action != "stop" {
+        return Err(format!("form_action: unknown action {action:?}"));
+    }
+    let options = kernel_options();
+    let mut bridge = Bridge::start(&options).map_err(|error| error.to_string())?;
+    let plan = bridge
+        .plan(&install_id, &action)
+        .map_err(|error| error.to_string())?;
+    bridge.apply(&plan).map_err(|error| error.to_string())?;
+    let _ = bridge.close();
+    log_line(&format!("form_action {action} {install_id}: applied"));
+
+    // A start records the process it created; the address the web form printed is in that
+    // process's log, which is the only place it exists (the record deliberately holds no
+    // token).
+    let state_path = options
+        .data_root
+        .clone()
+        .unwrap_or_else(|| o824_state::data_root(None))
+        .join(o824_state::STATE_FILE_NAME);
+    let record = o824_state::load(&state_path)
+        .ok()
+        .and_then(|state| state.processes.get(&install_id).cloned());
+    let url = record.as_ref().and_then(|record| {
+        o824_formproc::url_from_log(std::path::Path::new(&record.log_path))
+    });
+    let running = record.is_some();
+
+    let message = if action == "start" {
+        if running { "started" } else { "not started" }
+    } else if running {
+        "still running"
+    } else {
+        "stopped"
+    };
+    Ok(RunningView {
+        running,
+        url,
+        message: message.to_owned(),
+        start_label: o824_present::start_label(locale),
+        stop_label: o824_present::stop_label(locale),
+        open_label: o824_present::open_label(locale),
+    })
 }
 
 /// Asks the kernel what a repair would do, and shows it before anything changes.
@@ -487,12 +577,14 @@ fn summarize(
         log_line(&format!("layout: {layout}"));
     }
     let locale = Locale::from_system(std::env::var("LANG").ok().as_deref());
-    let copy = o824_present::first_use(&installs, locale).copy().clone();
+    let state = o824_present::first_use(&installs, locale);
+    let copy = state.copy().clone();
     Screen {
         headline: copy.headline,
         reason: copy.reason,
         next_step: copy.next_step,
         installations: Vec::new(),
+        action: state.action().to_owned(),
     }
 }
 

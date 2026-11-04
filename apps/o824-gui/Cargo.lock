@@ -1888,6 +1888,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "o824-discovery"
+version = "0.1.0"
+dependencies = [
+ "o824-errs",
+ "o824-model",
+ "o824-state",
+ "serde",
+ "serde_json",
+ "windows 0.58.0",
+]
+
+[[package]]
 name = "o824-errs"
 version = "0.1.0"
 dependencies = [
@@ -1896,12 +1908,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "o824-execx"
+version = "0.1.0"
+dependencies = [
+ "o824-errs",
+ "windows 0.58.0",
+]
+
+[[package]]
+name = "o824-formproc"
+version = "0.1.0"
+dependencies = [
+ "o824-discovery",
+ "o824-errs",
+ "o824-execx",
+ "o824-model",
+ "o824-state",
+ "serde_json",
+ "windows 0.58.0",
+]
+
+[[package]]
 name = "o824-gui"
 version = "0.1.0"
 dependencies = [
  "o824-bridge",
+ "o824-formproc",
  "o824-model",
  "o824-present",
+ "o824-state",
  "serde",
  "serde_json",
  "tauri",
@@ -1933,6 +1968,15 @@ version = "0.1.0"
 dependencies = [
  "o824-errs",
  "o824-model",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "o824-state"
+version = "0.1.0"
+dependencies = [
+ "o824-errs",
  "serde",
  "serde_json",
 ]
