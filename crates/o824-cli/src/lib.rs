@@ -16,6 +16,9 @@ pub mod discover;
 pub mod doctor;
 pub mod flags;
 pub mod install;
+pub mod install_cmd;
+#[cfg(test)]
+mod install_cmd_tests;
 pub mod kernel_cmd;
 pub mod manifest_cmd;
 #[cfg(test)]
@@ -107,6 +110,8 @@ pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i
         "diagnose" => diagnose_cmd::run(&args[1..], stdout, stderr),
         "kernel" => kernel_cmd::run(&args[1..], stderr),
         "update" => update_cmd::run(&args[1..], stdout, stderr),
+        "install" => install_cmd::install(&args[1..], stdout, stderr),
+        "uninstall" => install_cmd::uninstall(&args[1..], stdout, stderr),
         "manifest" => manifest_cmd::run(&args[1..], stdout, stderr),
         "manifest-keygen" => manifest_cmd::keygen(&args[1..], stdout, stderr),
         "verify-manifest" => manifest_cmd::verify(&args[1..], stdout, stderr),
@@ -137,6 +142,18 @@ pub fn usage() -> String {
     text.push_str("  rollback   restore an installation from a snapshot\n");
     text.push_str("  diagnose   write a redacted diagnostic bundle\n");
     text.push_str("  mock       replay a recorded protocol session\n");
+    text.push_str(
+        "  update     check a published release (never replaces anything)
+",
+    );
+    text.push_str(
+        "  install    put the launcher in its own directory for this user
+",
+    );
+    text.push_str(
+        "  uninstall  remove it again
+",
+    );
     text.push('\n');
     text.push_str("flags:\n");
     text.push_str("  --version  print the build identity\n");

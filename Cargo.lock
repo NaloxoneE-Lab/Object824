@@ -318,6 +318,7 @@ dependencies = [
  "o824-errs",
  "o824-fixtures",
  "o824-formproc",
+ "o824-install",
  "o824-kernel",
  "o824-lock",
  "o824-manifest",
@@ -413,6 +414,15 @@ dependencies = [
  "o824-model",
  "o824-state",
  "serde_json",
+ "windows",
+]
+
+[[package]]
+name = "o824-install"
+version = "0.1.0"
+dependencies = [
+ "o824-errs",
+ "o824-version",
  "windows",
 ]
 

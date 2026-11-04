@@ -44,6 +44,7 @@ windows = { version = "0.58", features = [
 ] }
 
 o824-errs = { path = "crates/o824-errs" }
+o824-install = { path = "crates/o824-install" }
 o824-manifest = { path = "crates/o824-manifest" }
 o824-model = { path = "crates/o824-model" }
 o824-version = { path = "crates/o824-version" }

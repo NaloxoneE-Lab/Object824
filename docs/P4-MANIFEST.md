@@ -157,6 +157,35 @@ files: ok (2 checked)
 脚本**不上传**任何东西，只把"发布页需要写什么"打出来：版本、公钥、清单的 sha256，以及那段
 未签名说明。上传是人的决定。
 
+
+## 安装器：`o824 install` / `o824 uninstall`
+
+不是打包格式，是"把两个 exe 放到它该在的地方"：
+
+```
+o824.exe install            # -> %LOCALAPPDATA%\o824，开始菜单快捷方式，卸载项（HKCU）
+o824.exe uninstall --yes    # 三样一起删
+```
+
+- **不需要管理员**，也不请求；
+- 装到 `%LOCALAPPDATA%` 是**功能要求**，不是偏好：工作区里的文件带 Low 完整性标签，从那儿运行
+  的进程拿不到通知区域图标（见 `docs/TRAY-INVESTIGATION.md`）；
+- 卸载项写在 `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\O824`；`UninstallString`
+  带引号并指向 `o824.exe uninstall --yes`，所以路径里有空格也能用；`NoModify`/`NoRepair` 置 1——
+  没有可修可改的东西，摆着按钮只会让人点了失败；
+- 删除是破坏性操作，缺 `--yes` 就退 3（§20.7 的二次确认）。
+
+实测（2026-11-05，从 `%LOCALAPPDATA%` 下的副本运行，不是在构建目录里）：
+
+```
+registry: DisplayName=O824  DisplayVersion=0.1.0-dev  UninstallString="...\o824.exe" uninstall --yes
+uninstall 无 --yes -> exit 3
+uninstall --yes    -> removed ...；注册表项与目录都消失
+```
+
+从**构建目录**里跑 install 时写注册表会得到 `ACCESS_DENIED`——同一条 Low 完整性规则。这不是 bug；
+install 因此把那一步当警告而不是假装成功。
+
 ## 还没做的（P4 其余部分）
 
 - 安装器；自更新的"检查—下载—校验—替换"；崩溃恢复。

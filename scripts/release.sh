@@ -118,6 +118,14 @@ cat <<TEXT
    public key     : $PUBLIC
    manifest sha256: $MANIFEST_SHA
 
+   How to install:
+
+       1. extract the folder anywhere;
+       2. run:  o824.exe install
+          (copies both programs into %LOCALAPPDATA%\o824, adds a Start Menu shortcut, and
+           registers a removal entry - no administrator rights needed);
+       3. launch O824 from the Start Menu.
+
    Tell people, on the page and in the first screen:
 
      1. this build is unsigned, so Windows SmartScreen will show
