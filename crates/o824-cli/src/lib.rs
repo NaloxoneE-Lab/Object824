@@ -28,6 +28,9 @@ pub mod render;
 pub mod repair;
 pub mod rollback;
 pub mod snapshot_cmd;
+pub mod update_cmd;
+#[cfg(test)]
+mod update_cmd_tests;
 
 use std::io::Write;
 
@@ -103,6 +106,7 @@ pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i
         "mock" => mock_cmd::run(&args[1..], stdout, stderr),
         "diagnose" => diagnose_cmd::run(&args[1..], stdout, stderr),
         "kernel" => kernel_cmd::run(&args[1..], stderr),
+        "update" => update_cmd::run(&args[1..], stdout, stderr),
         "manifest" => manifest_cmd::run(&args[1..], stdout, stderr),
         "manifest-keygen" => manifest_cmd::keygen(&args[1..], stdout, stderr),
         "verify-manifest" => manifest_cmd::verify(&args[1..], stdout, stderr),
