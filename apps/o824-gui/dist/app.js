@@ -189,6 +189,12 @@ async function start() {
     return;
   }
 
+  // `?empty=1` shows the screen for a machine with nothing installed. It exists because
+  // that state cannot be produced here — every discovery path on this machine finds at least
+  // one installation — and a screen nobody has ever seen is a screen nobody has checked.
+  if (new URLSearchParams(location.search).has("empty")) {
+    rows = [];
+  }
   drawRows(rows);
   elements.copy.hidden = rows.length === 0;
 
@@ -442,6 +448,10 @@ elements.copy?.addEventListener("click", async () => {
 const AUTO = new URLSearchParams(location.search).has("autorepair");
 
 start().then(async () => {
+  // `?guide=1` opens the install guidance so it can be seen without a hand on the mouse.
+  if (new URLSearchParams(location.search).has("guide")) {
+    await showInstallHelp();
+  }
   if (!AUTO) return;
   const target = lastDiagnosed || (await invoke("list"))[0];
   if (!target) return;

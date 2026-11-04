@@ -295,6 +295,9 @@ fn main() {
                     _ => "1",
                 };
                 tauri::WebviewUrl::App(format!("index.html?autorepair={mode}").into())
+            } else if std::env::var_os("O824_GUI_EMPTY").is_some() {
+                let guide = if std::env::var_os("O824_GUI_GUIDE").is_some() { "&guide=1" } else { "" };
+                tauri::WebviewUrl::App(format!("index.html?empty=1{guide}").into())
             } else {
                 tauri::WebviewUrl::App("index.html".into())
             };
