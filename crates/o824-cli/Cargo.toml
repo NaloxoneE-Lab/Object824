@@ -17,6 +17,7 @@ o824-snapshot.workspace = true
 o824-kernel.workspace = true
 o824-formproc.workspace = true
 o824-lock.workspace = true
+o824-manifest.workspace = true
 o824-mock.workspace = true
 o824-plan.workspace = true
 o824-state.workspace = true

@@ -17,6 +17,9 @@ pub mod doctor;
 pub mod flags;
 pub mod install;
 pub mod kernel_cmd;
+pub mod manifest_cmd;
+#[cfg(test)]
+mod manifest_cmd_tests;
 pub mod mock_cmd;
 pub mod process_cmd;
 #[cfg(test)]
@@ -100,6 +103,9 @@ pub fn run(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> i
         "mock" => mock_cmd::run(&args[1..], stdout, stderr),
         "diagnose" => diagnose_cmd::run(&args[1..], stdout, stderr),
         "kernel" => kernel_cmd::run(&args[1..], stderr),
+        "manifest" => manifest_cmd::run(&args[1..], stdout, stderr),
+        "manifest-keygen" => manifest_cmd::keygen(&args[1..], stdout, stderr),
+        "verify-manifest" => manifest_cmd::verify(&args[1..], stdout, stderr),
         "start" => process_cmd::start(&args[1..], stdout, stderr),
         "stop" => process_cmd::stop(&args[1..], stdout, stderr),
         "status" => process_cmd::status(&args[1..], stdout, stderr),

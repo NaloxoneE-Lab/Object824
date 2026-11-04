@@ -1,0 +1,19 @@
+[package]
+name = "o824-manifest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "the release manifest: a per-file sha256 list, signed with ed25519."
+
+[dependencies]
+o824-errs.workspace = true
+o824-model.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+ed25519-dalek = "2"
+
+windows.workspace = true
+
