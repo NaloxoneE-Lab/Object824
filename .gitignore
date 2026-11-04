@@ -31,3 +31,5 @@ apps/o824-gui/*.png
 apps/o824-gui/shot*.png
 .ci-manifest
 .ci-other.hex
+test-output.txt
+sdk-test.txt
