@@ -334,7 +334,7 @@ function dotClass() {
 }
 
 const ICONS = {
-  play: '<path d="M8.4 5.6v12.8L19 12z"/>',
+  play: '<path d="M4.5 3.5v17L19.5 12z"/>',
   repair:
     '<path d="M14.6 6.4a4.2 4.2 0 0 0-5.5 5.3L4.2 16.6V20h3.4l4.9-4.9a4.2 4.2 0 0 0 5.3-5.5l-2.6 2.6-2.4-.7-.7-2.4z"/>',
   install:
@@ -753,8 +753,8 @@ function toggleMenu(force) {
   $("menu").hidden = !open;
   $("menu-toggle").setAttribute("aria-expanded", String(open));
   $("menu-icon").innerHTML = open
-    ? '<path d="M6 6l12 12M18 6 6 18"/>'
-    : '<path d="M5 8h14M5 12h14M5 16h14"/>';
+    ? '<path d="M4 4l16 16M20 4L4 20" stroke-width="2.4" stroke-linecap="round"/>'
+    : '<path d="M4 8h16M4 12h16M4 16h16" stroke-width="2.4" stroke-linecap="butt"/>';
 }
 
 function closeMenu() {

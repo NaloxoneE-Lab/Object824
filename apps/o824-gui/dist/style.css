@@ -220,8 +220,8 @@ button {
 }
 
 .rail-foot svg {
-  width: 19px;
-  height: 13px;
+  width: 20px;
+  height: 17px;
   fill: currentColor;
   stroke: var(--rail);
   stroke-width: 1;
@@ -318,8 +318,8 @@ button {
 }
 
 .chip .ico {
-  width: 17px;
-  height: 17px;
+  width: 19px;
+  height: 19px;
 }
 
 .chip .dot {
@@ -338,8 +338,8 @@ button {
 }
 
 .round .ico {
-  width: 18px;
-  height: 18px;
+  width: 21px;
+  height: 21px;
 }
 
 /* -------------------------------------------------------------- hero copy */
@@ -512,15 +512,18 @@ button {
 }
 
 .cta-play .ico {
-  width: 15px;
-  height: 15px;
+  width: 22px;
+  height: 22px;
   color: var(--ink);
 }
 
 .cta-play .ico.play {
   fill: currentColor;
-  stroke: none;
-  margin-left: 2px;
+  /* A hairline stroke in the same colour rounds the triangle's corners, as the
+     reference's does. */
+  stroke: currentColor;
+  stroke-width: 1.2;
+  stroke-linejoin: round;
 }
 
 .menu-toggle {
@@ -542,8 +545,8 @@ button {
 }
 
 .menu-toggle .ico {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
 }
 
 .checkline {
