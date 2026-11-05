@@ -72,12 +72,11 @@ button {
 .app {
   position: relative;
   display: grid;
-  /* The reference is 1583×869: a 110px rail, a 10px gutter, and the stage. Flush to the
-     window on all four sides; the grey is only the gutter and the corner slivers. */
-  grid-template-columns: 82px minmax(0, 1fr);
+  /* The launcher's CSS viewport is 1266×695: an 88px rail, an 8px gutter, a 16px radius. */
+  grid-template-columns: 88px minmax(0, 1fr);
   gap: 8px;
   height: 100vh;
-  border-radius: 15px;
+  border-radius: 16px;
   overflow: hidden;
   background: var(--frame);
 }
@@ -90,21 +89,21 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 27px 0 0;
+  padding: 30px 0 0;
   overflow: hidden;
-  border-radius: 15px;
+  border-radius: 16px;
   background: linear-gradient(180deg, #1d1c1e 0%, #19181a 100%);
 }
 
 .rail-logo {
-  width: 46px;
-  height: 32px;
+  width: 48px;
+  height: 34px;
   display: grid;
   place-items: center;
 }
 
 .rail-logo img {
-  width: 42px;
+  width: 45px;
   height: auto;
   display: block;
   opacity: 0.96;
@@ -117,10 +116,10 @@ button {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 18px;
+  gap: 19px;
   /* Centred on the window, not on the space left under the logo: the reference's three
      tiles sit within 4px of the window's vertical middle. */
-  transform: translateY(-3px);
+  transform: translateY(-4px);
   pointer-events: none;
 }
 
@@ -130,8 +129,8 @@ button {
 
 .tab {
   position: relative;
-  width: 46px;
-  height: 46px;
+  width: 48px;
+  height: 48px;
   padding: 0;
   border: 0;
   border-radius: 6px;
@@ -152,7 +151,7 @@ button {
 .tab::after {
   content: "";
   position: absolute;
-  inset: -5px;
+  inset: -6px;
   border-radius: 10px;
   border: 2px solid transparent;
   transition: border-color 120ms ease;
@@ -204,11 +203,11 @@ button {
  * the wide four-square mark in the reference; open, it rotates 45° into a diamond. */
 .rail-foot {
   position: absolute;
-  bottom: 22px;
+  bottom: 23px;
   left: 50%;
   transform: translateX(-50%);
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
   display: grid;
   place-items: center;
   border: 2px solid transparent;
@@ -229,8 +228,8 @@ button {
 .all-games {
   position: relative;
   display: block;
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
   transform: scaleX(1.4);
   transition: transform 0.3s ease;
 }
@@ -241,8 +240,8 @@ button {
 
 .all-games i {
   position: absolute;
-  width: 5.6px;
-  height: 5.6px;
+  width: 6px;
+  height: 6px;
   background: #fff;
 }
 
@@ -272,7 +271,7 @@ button {
   position: relative;
   min-width: 0;
   overflow: hidden;
-  border-radius: 15px;
+  border-radius: 16px;
   background: var(--stage);
   color: var(--ink);
 }
@@ -290,42 +289,45 @@ button {
 
 .topbar {
   position: absolute;
-  top: 15px;
-  right: 26px;
+  top: 16px;
+  right: 28px;
   z-index: 8;
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 16px;
 }
 
+/* The launcher's .header-icon: 2.5rem (40px), 0.5px white/10 border, #18171a at 95%,
+   ​0 2px 6px black/55. */
 .chip,
 .round {
-  border: 0;
-  background: var(--chrome);
+  border: 0.5px solid rgba(255, 255, 255, 0.1);
+  background: rgba(24, 23, 26, 0.95);
   color: #f4f4f5;
   cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(10px);
   transition: background 120ms ease;
 }
 
 .chip:hover,
 .round:hover {
-  background: #2c2c31;
+  background: linear-gradient(0deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.15)),
+    rgba(24, 23, 26, 0.95);
 }
 
 .chip {
-  height: 39px;
+  height: 40px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  /* The reference leaves a wider gap between the login pill and the three circles than
-     between the circles themselves. */
-  margin-right: 19px;
-  padding: 0 16px 0 13px;
-  border-radius: 999px;
-  font-size: 14.5px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  gap: 4px;
+  /* The launcher puts a wider gap between the login pill and the three circles. */
+  margin-right: 20px;
+  padding: 0 12px;
+  border-radius: 100px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
 }
 
 .chip .ico {
@@ -341,38 +343,37 @@ button {
 }
 
 .round {
-  width: 39px;
-  height: 39px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
   border-radius: 50%;
 }
 
+/* The launcher's own component sizes: xf 24, Ef 16, vf 14, of 24. */
 .round .ico {
-  width: 21px;
-  height: 21px;
+  width: 16px;
+  height: 16px;
 }
 
-/* Each header glyph is the launcher's own 14/16/24px component; these are the sizes
-   that put its ink at the reference's proportion of the 39px button. */
 #minimize .ico {
-  width: 17px;
-  height: 17px;
+  width: 14px;
+  height: 14px;
 }
 
 #close .ico {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
 }
 
 /* -------------------------------------------------------------- hero copy */
 
 .hero-copy {
   position: absolute;
-  left: 40px;
-  bottom: 112px;
+  left: 44px;
+  bottom: 120px;
   z-index: 4;
-  max-width: 560px;
+  max-width: 600px;
 }
 
 .eyebrow {
@@ -417,7 +418,7 @@ button {
   /* Wide enough that "DeepSeek Harness 0.2.1-rc.3" is one line; narrow enough that a long
      Chinese sentence breaks at its spaces instead of running under the start button. */
   max-width: 30ch;
-  font-size: 36px;
+  font-size: 38px;
   line-height: 1.14;
   font-weight: 700;
   letter-spacing: -0.015em;
@@ -434,7 +435,7 @@ button {
 #reason {
   margin: 0;
   max-width: 60ch;
-  font-size: 13.5px;
+  font-size: 14.5px;
   line-height: 1.62;
   color: rgba(20, 20, 22, 0.64);
 }
@@ -466,27 +467,27 @@ button {
 .launch {
   position: absolute;
   /* The reference's pill is 275×75 at 88px from the right and 51px above the window
-     bottom, with the checkbox row starting at the pill's left edge. Scaled to 1180×648:
-     205×56, 66px from the right, 18px above the bottom. */
-  right: 66px;
-  bottom: 18px;
+     bottom, with the checkbox row starting at the pill's left edge. The launcher's own
+     numbers: 220×60, 70px from the right, 17px above the bottom. */
+  right: 70px;
+  bottom: 17px;
   z-index: 9;
-  width: 205px;
+  width: 220px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 7px;
+  gap: 9px;
 }
 
 .cta-shell {
-  width: 205px;
-  height: 56px;
-  padding: 5px;
+  width: 220px;
+  height: 60px;
+  padding: 4px;
   display: flex;
   align-items: center;
-  border-radius: 999px;
+  border-radius: 100px;
   background: var(--yellow);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.55);
 }
 
 .cta-shell.is-idle {
@@ -495,18 +496,17 @@ button {
 
 .cta {
   flex: 1;
-  height: 46px;
+  height: 52px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 0 0 8px;
+  gap: 9px;
+  padding: 0 0 0 12px;
   border: 0;
-  border-radius: 999px;
+  border-radius: 100px;
   background: transparent;
   color: var(--ink);
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 700;
-  letter-spacing: 0.01em;
   cursor: pointer;
 }
 
@@ -523,46 +523,42 @@ button {
   text-align: center;
 }
 
-/* The play glyph is an outlined black circle on the yellow pill, not a filled badge. */
+/* The StartGame glyph is the launcher's `Of`: 26×26 with its own 24px circle. */
 .cta-play {
-  width: 38px;
-  height: 38px;
+  width: 26px;
+  height: 26px;
   display: grid;
   place-items: center;
-  border: 2.5px solid var(--ink);
+  border: 2px solid var(--ink);
   border-radius: 50%;
   flex: none;
 }
 
 .cta-play .ico {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   color: var(--ink);
 }
 
-/* The play icon brings its own 24px circle (the launcher's `Of`), so the CSS ring is only
-   for the repair/install glyphs. */
 .cta-play.is-play {
   border: 0;
 }
 
 .cta-play.is-play .ico {
-  width: 38px;
-  height: 38px;
+  width: 26px;
+  height: 26px;
 }
 
 .cta-play .ico.play {
   fill: currentColor;
-  /* A hairline stroke in the same colour rounds the triangle's corners, as the
-     reference's does. */
   stroke: currentColor;
-  stroke-width: 1.2;
+  stroke-width: 1;
   stroke-linejoin: round;
 }
 
 .menu-toggle {
-  width: 46px;
-  height: 46px;
+  width: 52px;
+  height: 52px;
   display: grid;
   place-items: center;
   border: 0;
@@ -579,17 +575,17 @@ button {
 }
 
 .menu-toggle .ico {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 12px;
 }
 
 .checkline {
   display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: 13.5px;
+  gap: 8px;
+  font-size: 12px;
   color: #ffffff;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(0, 0, 0, 0.5);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -621,9 +617,8 @@ button {
   position: absolute;
   right: 0;
   bottom: calc(100% + 20px);
-  /* In the reference the menu is slightly narrower than the start pill (270 vs 314 in
-     that frame), so it is 180 against the 205 pill here. */
-  width: 180px;
+  /* The launcher's main-button menu is 220px wide, same as the button. */
+  width: 220px;
   padding: 6px;
   display: flex;
   flex-direction: column;
@@ -633,12 +628,12 @@ button {
 }
 
 .menu-item {
-  padding: 10px 12px;
+  padding: 10px 14px;
   border: 0;
   border-radius: 7px;
   background: transparent;
   color: #ececee;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
   text-align: left;
   white-space: nowrap;
@@ -845,10 +840,9 @@ button {
 /* ---------------------------------------------------------------- settings */
 
 .settings-sheet {
-  /* The reference dialog is 955×515 in a 1683-wide frame — 57% by 57%. This is 59% × 63%,
-     the extra height being the third group's two-line detail in Chinese. */
-  width: 700px;
-  height: 450px;
+  /* The reference dialog is 955×515 physical, i.e. 764×412 at the launcher's 1.25 scale. */
+  width: 764px;
+  height: 412px;
   max-height: 80vh;
 }
 
@@ -897,19 +891,19 @@ button {
 }
 
 .settings-pages {
-  padding: 18px 20px;
+  padding: 14px 16px;
   overflow: auto;
 }
 
 .group {
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   overflow: hidden;
   border-radius: 10px;
   background: #2a2a2e;
 }
 
 .group-head {
-  padding: 12px 16px;
+  padding: 10px 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   font-size: 13px;
   font-weight: 600;
@@ -919,7 +913,7 @@ button {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 14px 16px;
+  padding: 10px 14px;
   cursor: pointer;
 }
 
