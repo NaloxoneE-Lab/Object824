@@ -370,7 +370,8 @@ fn main() {
                 };
                 let mut builder = tauri::WebviewWindowBuilder::new(app, "main", url)
                     .title("O824")
-                    .inner_size(1180.0, 666.0)
+                    // The reference window is 1583×869 (1.82:1); this is that ratio at 1180.
+                    .inner_size(1180.0, 648.0)
                     // The window draws its own title bar; a launcher is a fixed board, not a
                     // document, so there is nothing to gain from letting it be resized into a
                     // shape the layout was not designed for.

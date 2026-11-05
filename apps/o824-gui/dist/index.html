@@ -17,11 +17,11 @@
         </div>
         <nav class="tabs" id="tabs" aria-label=""></nav>
         <button class="rail-foot" id="all-installs" aria-label="">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <rect x="4" y="4" width="6.5" height="6.5" rx="1" />
-            <rect x="13.5" y="4" width="6.5" height="6.5" rx="1" />
-            <rect x="4" y="13.5" width="6.5" height="6.5" rx="1" />
-            <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1" />
+          <svg viewBox="0 0 24 16" aria-hidden="true">
+            <rect x="2" y="2" width="9" height="5.4" rx="1" />
+            <rect x="13" y="2" width="9" height="5.4" rx="1" />
+            <rect x="2" y="8.6" width="9" height="5.4" rx="1" />
+            <rect x="13" y="8.6" width="9" height="5.4" rx="1" />
           </svg>
         </button>
       </aside>
@@ -79,9 +79,11 @@
             <button class="menu-item" id="menu-integrity"></button>
             <button class="menu-item separated" id="menu-cache"></button>
           </div>
-          <div class="cta-row">
-            <button class="cta" id="primary" hidden>
-              <span class="cta-badge" id="primary-badge">
+          <!-- One yellow pill, not a pill plus a circle: the reference puts the menu inside the
+               right end of the start control, with a ring of yellow around it. -->
+          <div class="cta-shell" id="cta-shell">
+            <button class="cta" id="primary">
+              <span class="cta-play" id="primary-badge">
                 <svg class="ico" id="primary-icon" viewBox="0 0 24 24" aria-hidden="true"></svg>
               </span>
               <span id="primary-label"></span>

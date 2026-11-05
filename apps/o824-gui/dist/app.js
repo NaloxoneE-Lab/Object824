@@ -316,8 +316,12 @@ function setCopy(copy) {
   $("version").hidden = !install || headline.includes(versionText);
 
   $("state-dot").className = `state-dot ${dotClass()}`;
-  $("primary").hidden = !copy.next_step;
-  $("primary-label").textContent = copy.next_step || "";
+  // The pill never disappears: a launcher without its start control reads as broken. While
+  // there is no next step it says what is happening and is disabled.
+  $("primary").hidden = false;
+  $("primary-label").textContent = copy.next_step || t("checking");
+  $("primary").disabled = state.busy || !copy.next_step;
+  $("cta-shell").classList.toggle("is-idle", !copy.next_step);
   setPrimaryIcon(copy.action || "start");
   $("detail-link").hidden = state.findings.length === 0;
 }
@@ -348,7 +352,7 @@ function setPrimaryIcon(action) {
 
 function setBusy(busy) {
   state.busy = busy;
-  $("primary").disabled = busy;
+  $("primary").disabled = busy || !state.copy.next_step;
   $("menu-toggle").disabled = busy;
 }
 

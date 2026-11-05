@@ -9,14 +9,16 @@
  */
 
 :root {
-  --yellow: #e8e62a;
+  /* Sampled from the reference: the start control is #fdfc00, the rail #1c1b1d, the
+     gutter behind the panels #a5a5a5, the floating buttons #242326. */
+  --yellow: #fdfc00;
   --ink: #17171a;
-  --rail: #141416;
-  --chrome: rgba(23, 23, 26, 0.9);
+  --rail: #1c1b1d;
+  --chrome: #242326;
   --stage: #c4c4c4;
   /* The board behind the two panels. It is the window, not a third panel: the rail and
      the stage float on it, each with its own radius, separated by a gutter of this colour. */
-  --frame: #a6a6a6;
+  --frame: #a5a5a5;
   --font: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC",
     system-ui, sans-serif;
   --mono: "Cascadia Mono", "Consolas", "SFMono-Regular", ui-monospace, monospace;
@@ -70,11 +72,12 @@ button {
 .app {
   position: relative;
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr);
-  gap: 10px;
+  /* The reference is 1583×869: a 110px rail, a 10px gutter, and the stage. Flush to the
+     window on all four sides; the grey is only the gutter and the corner slivers. */
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 8px;
   height: 100vh;
-  padding: 10px;
-  border-radius: 16px;
+  border-radius: 15px;
   overflow: hidden;
   background: var(--frame);
 }
@@ -87,33 +90,42 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 22px 0 18px;
+  padding: 27px 0 0;
   overflow: hidden;
-  border-radius: 12px;
-  background: linear-gradient(180deg, #161618 0%, #121214 100%);
+  border-radius: 15px;
+  background: linear-gradient(180deg, #1d1c1e 0%, #19181a 100%);
 }
 
 .rail-logo {
   width: 46px;
-  height: 44px;
+  height: 32px;
   display: grid;
   place-items: center;
 }
 
 .rail-logo img {
-  width: 40px;
+  width: 42px;
   height: auto;
   display: block;
   opacity: 0.96;
 }
 
 .tabs {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  margin-top: auto;
-  margin-bottom: auto;
-  transform: translateY(26px);
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  /* Centred on the window, not on the space left under the logo: the reference's three
+     tiles sit within 4px of the window's vertical middle. */
+  transform: translateY(-3px);
+  pointer-events: none;
+}
+
+.tab {
+  pointer-events: auto;
 }
 
 .tab {
@@ -122,7 +134,7 @@ button {
   height: 46px;
   padding: 0;
   border: 0;
-  border-radius: 11px;
+  border-radius: 6px;
   background: #26262a;
   cursor: pointer;
   isolation: isolate;
@@ -133,15 +145,15 @@ button {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 11px;
+  border-radius: 6px;
 }
 
 /* The ring sits outside the tile so selecting one does not change its size. */
 .tab::after {
   content: "";
   position: absolute;
-  inset: -4px;
-  border-radius: 15px;
+  inset: -5px;
+  border-radius: 10px;
   border: 2px solid transparent;
   transition: border-color 120ms ease;
 }
@@ -188,7 +200,7 @@ button {
 
 .rail-foot {
   position: absolute;
-  bottom: 18px;
+  bottom: 26px;
   left: 50%;
   transform: translateX(-50%);
   width: 40px;
@@ -198,7 +210,7 @@ button {
   border: 0;
   border-radius: 10px;
   background: transparent;
-  color: #8a8a92;
+  color: #f0f0f2;
   cursor: pointer;
 }
 
@@ -208,11 +220,11 @@ button {
 }
 
 .rail-foot svg {
-  width: 20px;
-  height: 20px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
+  width: 19px;
+  height: 13px;
+  fill: currentColor;
+  stroke: var(--rail);
+  stroke-width: 1;
 }
 
 /* ----------------------------------------------------------------- stage */
@@ -221,7 +233,7 @@ button {
   position: relative;
   min-width: 0;
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: 15px;
   background: var(--stage);
   color: var(--ink);
 }
@@ -267,12 +279,12 @@ button {
 
 .topbar {
   position: absolute;
-  top: 17px;
-  right: 20px;
+  top: 15px;
+  right: 26px;
   z-index: 8;
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 15px;
 }
 
 .chip,
@@ -291,20 +303,23 @@ button {
 }
 
 .chip {
-  height: 38px;
+  height: 39px;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 15px 0 12px;
+  /* The reference leaves a wider gap between the login pill and the three circles than
+     between the circles themselves. */
+  margin-right: 19px;
+  padding: 0 16px 0 13px;
   border-radius: 999px;
-  font-size: 12.5px;
+  font-size: 14.5px;
   font-weight: 600;
   letter-spacing: 0.01em;
 }
 
 .chip .ico {
-  width: 16px;
-  height: 16px;
+  width: 17px;
+  height: 17px;
 }
 
 .chip .dot {
@@ -315,16 +330,16 @@ button {
 }
 
 .round {
-  width: 38px;
-  height: 38px;
+  width: 39px;
+  height: 39px;
   display: grid;
   place-items: center;
   border-radius: 50%;
 }
 
 .round .ico {
-  width: 17px;
-  height: 17px;
+  width: 18px;
+  height: 18px;
 }
 
 /* -------------------------------------------------------------- hero copy */
@@ -427,108 +442,129 @@ button {
 
 .launch {
   position: absolute;
-  right: 30px;
-  bottom: 26px;
+  /* The reference's pill is 275×75 at 88px from the right and 51px above the window
+     bottom, with the checkbox row starting at the pill's left edge. Scaled to 1180×648:
+     205×56, 66px from the right, 18px above the bottom. */
+  right: 66px;
+  bottom: 18px;
   z-index: 9;
+  width: 205px;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 7px;
 }
 
-.cta-row {
+.cta-shell {
+  width: 205px;
+  height: 56px;
+  padding: 5px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  border-radius: 999px;
+  background: var(--yellow);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+}
+
+.cta-shell.is-idle {
+  opacity: 0.8;
 }
 
 .cta {
-  min-width: 178px;
-  height: 50px;
+  flex: 1;
+  height: 46px;
   display: flex;
   align-items: center;
-  padding: 0 24px 0 0;
+  gap: 8px;
+  padding: 0 0 0 8px;
   border: 0;
   border-radius: 999px;
-  background: var(--yellow);
+  background: transparent;
   color: var(--ink);
-  font-size: 14.5px;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: 0.01em;
   cursor: pointer;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
 }
 
 .cta:hover {
-  filter: brightness(1.045);
+  filter: brightness(1.04);
 }
 
 .cta:disabled {
-  opacity: 0.65;
   cursor: default;
 }
 
-.cta-badge {
-  width: 50px;
-  height: 50px;
-  margin-right: 12px;
+#primary-label {
+  flex: 1;
+  text-align: center;
+}
+
+/* The play glyph is an outlined black circle on the yellow pill, not a filled badge. */
+.cta-play {
+  width: 38px;
+  height: 38px;
   display: grid;
   place-items: center;
+  border: 2.5px solid var(--ink);
   border-radius: 50%;
-  background: var(--ink);
-  color: var(--yellow);
   flex: none;
 }
 
-.cta-badge .ico {
-  width: 22px;
-  height: 22px;
+.cta-play .ico {
+  width: 15px;
+  height: 15px;
+  color: var(--ink);
 }
 
-.cta-badge .ico.play {
+.cta-play .ico.play {
   fill: currentColor;
   stroke: none;
+  margin-left: 2px;
 }
 
 .menu-toggle {
-  width: 50px;
-  height: 50px;
+  width: 46px;
+  height: 46px;
   display: grid;
   place-items: center;
   border: 0;
   border-radius: 50%;
-  background: var(--ink);
-  color: #f4f4f5;
+  /* Black over yellow, sampled as #4b4914. */
+  background: #4b4914;
+  color: #f6f6f6;
   cursor: pointer;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
+  flex: none;
 }
 
 .menu-toggle:hover {
-  background: #26262b;
+  background: #5a5718;
 }
 
 .menu-toggle .ico {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
 }
 
 .checkline {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: rgba(20, 20, 22, 0.66);
+  gap: 7px;
+  font-size: 13.5px;
+  color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
   cursor: pointer;
 }
 
 .checkline input {
   appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   margin: 0;
-  border: 1.5px solid rgba(20, 20, 22, 0.4);
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.35);
   cursor: pointer;
   flex: none;
 }
@@ -547,25 +583,28 @@ button {
 .menu {
   position: absolute;
   right: 0;
-  bottom: calc(100% + 12px);
-  width: 270px;
-  padding: 7px;
+  bottom: calc(100% + 20px);
+  /* In the reference the menu is slightly narrower than the start pill (270 vs 314 in
+     that frame), so it is 180 against the 205 pill here. */
+  width: 180px;
+  padding: 6px;
   display: flex;
   flex-direction: column;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #232326;
   box-shadow: 0 22px 48px rgba(0, 0, 0, 0.36);
 }
 
 .menu-item {
-  padding: 12px 14px;
+  padding: 10px 12px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 7px;
   background: transparent;
   color: #ececee;
-  font-size: 13.5px;
+  font-size: 12.5px;
   font-weight: 500;
   text-align: left;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -769,8 +808,10 @@ button {
 /* ---------------------------------------------------------------- settings */
 
 .settings-sheet {
-  width: 760px;
-  height: 478px;
+  /* The reference dialog is 955×515 in a 1683-wide frame — 57% by 57%. This is 59% × 63%,
+     the extra height being the third group's two-line detail in Chinese. */
+  width: 700px;
+  height: 450px;
   max-height: 80vh;
 }
 
@@ -778,7 +819,7 @@ button {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 196px minmax(0, 1fr);
+  grid-template-columns: 160px minmax(0, 1fr);
 }
 
 .settings-nav {
