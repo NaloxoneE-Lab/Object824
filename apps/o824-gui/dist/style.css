@@ -198,33 +198,72 @@ button {
   background: #5d5d64;
 }
 
+/* The launcher's all-games button, reconstructed from its JSX: a 52×52 button with a 2px
+ * border (transparent, white 0.35 on hover, white 0.75 when open) around four 6×6 white
+ * squares in a 14×14 box. Idle, the box is stretched 1.4× horizontally — which is exactly
+ * the wide four-square mark in the reference; open, it rotates 45° into a diamond. */
 .rail-foot {
   position: absolute;
-  bottom: 26px;
+  bottom: 22px;
   left: 50%;
   transform: translateX(-50%);
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   display: grid;
   place-items: center;
-  border: 0;
-  border-radius: 10px;
+  border: 2px solid transparent;
+  border-radius: 8px;
   background: transparent;
-  color: #f0f0f2;
   cursor: pointer;
+  transition: border-color 0.2s ease;
 }
 
 .rail-foot:hover {
-  background: #232327;
-  color: #f0f0f2;
+  border-color: rgba(255, 255, 255, 0.35);
 }
 
-.rail-foot svg {
-  width: 20px;
-  height: 17px;
-  fill: currentColor;
-  stroke: var(--rail);
-  stroke-width: 1;
+.rail-foot.is-active {
+  border-color: rgba(255, 255, 255, 0.75);
+}
+
+.all-games {
+  position: relative;
+  display: block;
+  width: 13px;
+  height: 13px;
+  transform: scaleX(1.4);
+  transition: transform 0.3s ease;
+}
+
+.rail-foot.is-active .all-games {
+  transform: rotate(45deg) scaleX(1);
+}
+
+.all-games i {
+  position: absolute;
+  width: 5.6px;
+  height: 5.6px;
+  background: #fff;
+}
+
+.all-games i:nth-child(1) {
+  top: 0;
+  left: 0;
+}
+
+.all-games i:nth-child(2) {
+  top: 0;
+  right: 0;
+}
+
+.all-games i:nth-child(3) {
+  bottom: 0;
+  left: 0;
+}
+
+.all-games i:nth-child(4) {
+  bottom: 0;
+  right: 0;
 }
 
 /* ----------------------------------------------------------------- stage */
@@ -499,6 +538,17 @@ button {
   width: 22px;
   height: 22px;
   color: var(--ink);
+}
+
+/* The play icon brings its own 24px circle (the launcher's `Of`), so the CSS ring is only
+   for the repair/install glyphs. */
+.cta-play.is-play {
+  border: 0;
+}
+
+.cta-play.is-play .ico {
+  width: 38px;
+  height: 38px;
 }
 
 .cta-play .ico.play {

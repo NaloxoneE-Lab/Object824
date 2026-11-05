@@ -125,6 +125,7 @@ function openSheet(id, focusId) {
 function closeSheet() {
   $("overlay").hidden = true;
   state.sheet = null;
+  $("all-installs").classList.remove("is-active");
 }
 
 // --------------------------------------------------------------------- chrome
@@ -334,7 +335,8 @@ function dotClass() {
 }
 
 const ICONS = {
-  play: '<path d="M4.5 3.5v17L19.5 12z"/>',
+  // The launcher's StartGame icon (`Of`): a 24px circle with the exact play triangle.
+  play: '<rect x="1" y="1" width="24" height="24" rx="12" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12.9419 17.5H10.5L10.5 8.5L12.9419 8.5L17.5 13L12.9419 17.5Z" fill="currentColor" stroke="none"/>',
   repair:
     '<path d="M14.6 6.4a4.2 4.2 0 0 0-5.5 5.3L4.2 16.6V20h3.4l4.9-4.9a4.2 4.2 0 0 0 5.3-5.5l-2.6 2.6-2.4-.7-.7-2.4z"/>',
   install:
@@ -346,8 +348,12 @@ const ICONS = {
 function setPrimaryIcon(action) {
   const icon = $("primary-icon");
   const name = Object.prototype.hasOwnProperty.call(ICONS, action) ? action : "play";
+  icon.setAttribute("viewBox", name === "play" ? "0 0 26 26" : "0 0 24 24");
   icon.innerHTML = ICONS[name];
   icon.classList.toggle("play", name === "play");
+  // For play the circle is drawn by the SVG itself; for repair/install the container keeps
+  // the CSS ring.
+  $("primary-badge").classList.toggle("is-play", name === "play");
 }
 
 function setBusy(busy) {
@@ -542,6 +548,7 @@ async function copyDiagnostics() {
 // ------------------------------------------------------------------- installs
 
 function openInstalls() {
+  $("all-installs").classList.add("is-active");
   const body = $("installs-body");
   if (state.installs.length === 0) {
     body.textContent = t("details_none");
