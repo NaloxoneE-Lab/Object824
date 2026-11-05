@@ -14,6 +14,9 @@
   --rail: #141416;
   --chrome: rgba(23, 23, 26, 0.9);
   --stage: #c4c4c4;
+  /* The board behind the two panels. It is the window, not a third panel: the rail and
+     the stage float on it, each with its own radius, separated by a gutter of this colour. */
+  --frame: #a6a6a6;
   --font: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC",
     system-ui, sans-serif;
   --mono: "Cascadia Mono", "Consolas", "SFMono-Regular", ui-monospace, monospace;
@@ -68,10 +71,12 @@ button {
   position: relative;
   display: grid;
   grid-template-columns: 84px minmax(0, 1fr);
+  gap: 10px;
   height: 100vh;
-  border-radius: 12px;
+  padding: 10px;
+  border-radius: 16px;
   overflow: hidden;
-  background: var(--rail);
+  background: var(--frame);
 }
 
 /* ------------------------------------------------------------------ rail */
@@ -83,8 +88,9 @@ button {
   flex-direction: column;
   align-items: center;
   padding: 22px 0 18px;
+  overflow: hidden;
+  border-radius: 12px;
   background: linear-gradient(180deg, #161618 0%, #121214 100%);
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .rail-logo {
@@ -215,6 +221,7 @@ button {
   position: relative;
   min-width: 0;
   overflow: hidden;
+  border-radius: 12px;
   background: var(--stage);
   color: var(--ink);
 }
