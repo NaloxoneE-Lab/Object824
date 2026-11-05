@@ -290,8 +290,8 @@ button {
 }
 
 .chip .ico {
-  width: 19px;
-  height: 19px;
+  width: 24px;
+  height: 24px;
 }
 
 .chip .dot {
@@ -312,6 +312,18 @@ button {
 .round .ico {
   width: 21px;
   height: 21px;
+}
+
+/* Each header glyph is the launcher's own 14/16/24px component; these are the sizes
+   that put its ink at the reference's proportion of the 39px button. */
+#minimize .ico {
+  width: 17px;
+  height: 17px;
+}
+
+#close .ico {
+  width: 26px;
+  height: 26px;
 }
 
 /* -------------------------------------------------------------- hero copy */
@@ -517,8 +529,8 @@ button {
 }
 
 .menu-toggle .ico {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
 }
 
 .checkline {

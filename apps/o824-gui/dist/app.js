@@ -752,9 +752,16 @@ function toggleMenu(force) {
   $("menu-integrity").disabled = !selectedInstall();
   $("menu").hidden = !open;
   $("menu-toggle").setAttribute("aria-expanded", String(open));
-  $("menu-icon").innerHTML = open
-    ? '<path d="M4 4l16 16M20 4L4 20" stroke-width="2.4" stroke-linecap="round"/>'
-    : '<path d="M4 8h16M4 12h16M4 16h16" stroke-width="2.4" stroke-linecap="butt"/>';
+  const icon = $("menu-icon");
+  if (open) {
+    icon.setAttribute("viewBox", "0 0 24 24");
+    icon.innerHTML =
+      '<path fill="currentColor" stroke="none" fill-rule="evenodd" clip-rule="evenodd" d="M13.5562 9.31353L17.0917 5.778L18.5059 7.19221L14.9704 10.7277L13.5562 9.31353ZM5.77746 17.0912L9.31299 13.5556L10.7272 14.9698L7.19167 18.5054L5.77746 17.0912ZM14.687 13.5556L18.2225 17.0912L16.8083 18.5054L13.2728 14.9698L14.687 13.5556ZM6.90883 5.77745L10.4444 9.31298L9.03015 10.7272L5.49462 7.19166L6.90883 5.77745Z"/>';
+  } else {
+    icon.setAttribute("viewBox", "0 0 18 12");
+    icon.innerHTML =
+      '<path fill="currentColor" stroke="none" d="M18 12H0V10H18V12ZM18 7H0V5H18V7ZM18 2H0V0H18V2Z"/>';
+  }
 }
 
 function closeMenu() {
