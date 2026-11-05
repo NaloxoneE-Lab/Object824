@@ -238,41 +238,13 @@ button {
   color: var(--ink);
 }
 
+/* The launcher's own Endfield theme art, extracted from Games.exe (the Qt resource blob
+ * `webp_12284516`): 2324×1392, with the grid, the yellow blocks and the ENDFIELD watermark
+ * already in it. The stage is 1.68:1 and the art is 1.67:1, so cover loses almost nothing. */
 .art {
   position: absolute;
   inset: 0;
-}
-
-.art-grid {
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.4) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.4) 1px, transparent 1px);
-  background-size: 46px 46px;
-  /* The grid belongs to the corner the future illustration will grow from, not to the whole
-     board: graph paper under the text reads as a missing background asset. */
-  mask-image: radial-gradient(78% 70% at 16% 4%, #000 0%, rgba(0, 0, 0, 0.35) 48%, transparent 72%);
-  -webkit-mask-image: radial-gradient(78% 70% at 16% 4%, #000 0%, rgba(0, 0, 0, 0.35) 48%, transparent 72%);
-  opacity: 0.45;
-}
-
-.art-glow {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(46% 40% at 82% 8%, rgba(232, 230, 42, 0.05), transparent 70%);
-}
-
-.watermark {
-  position: absolute;
-  left: -12px;
-  bottom: -34px;
-  font-size: 168px;
-  line-height: 0.82;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-  color: rgba(255, 255, 255, 0.25);
-  white-space: nowrap;
+  background: url("assets/background.webp") center center / cover no-repeat;
 }
 
 /* ---------------------------------------------------------------- top bar */

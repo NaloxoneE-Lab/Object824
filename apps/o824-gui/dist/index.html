@@ -27,11 +27,9 @@
       </aside>
 
       <main class="stage" data-tauri-drag-region>
-        <div class="art" data-tauri-drag-region aria-hidden="true">
-          <div class="art-grid"></div>
-          <div class="art-glow"></div>
-          <div class="watermark">O824</div>
-        </div>
+        <!-- The real theme art, extracted from the launcher's Qt resources: it already
+             contains the grid, the yellow blocks and the ENDFIELD watermark. -->
+        <div class="art" data-tauri-drag-region aria-hidden="true"></div>
 
         <header class="topbar">
           <button class="chip" id="update">

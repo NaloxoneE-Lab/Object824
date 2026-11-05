@@ -2,7 +2,7 @@
 
 > 设计说明见 [`docs/superpowers/specs/2026-11-05-p4-gui-board-design.md`](superpowers/specs/2026-11-05-p4-gui-board-design.md)。
 
-![启动器主界面](images/p4-gui-board.png)
+![启动器主界面](images/p4-gui-board.jpg)
 
 版面不是估的，是拿第一张参考图量的：窗口内容 1583×869，按 1180 宽等比得到 **1180×648**；
 左栏 82（参考 110）、两块面板贴住窗口四边、中间 8px 灰缝（参考 10）、面板圆角 15（参考
@@ -13,18 +13,39 @@
 图标也按参考图重画了：人形登录位、实心 8 齿齿轮、3px 粗横线/2.6px 粗 X、主按钮 22px 圆角
 实心三角 + 20px 粗汉堡、左下 2×2 圆角方块 20×17（之前的 19×13 太扁）。细节见设计文档 §4。
 
+## 美术资源：从鹰角启动器里取的
+
+参考图就是这台机器上的 **Hypergryph Launcher 1.6.0**（Qt 5 + WebEngine，UI 在
+`res/web`）。它的美术资源不在 `res/web/assets`（那里只有一张 405×100 的 `pattern3`
+点阵），而是三处：
+
+| 资源 | 位置 | 用法 |
+|---|---|---|
+| Endfield 主视觉（2324×1392，带 ENDFIELD 水印、网格、黄块） | `Games.exe` 内嵌的 Qt 资源，扫 `RIFF....WEBP` 得到；offset `12284516`，303 KB | `dist/assets/background.webp`，主区 `center/cover` |
+| 三个游戏图标（256×256） | `res/icons/endfield.ico`、`arknights.ico`、`popucom.ico` | `dist/assets/tab-{desktop,web,tui}.png` |
+| 鹰角标志（白 mark） | `res/icons/app.ico`（256×256） | 暂用参考图裁的 `logo.png`，未替换 |
+
+`Games.exe` 里还有：同一张 Endfield 的无水印版（`12588022`，394 KB）、两张 3.2/2.9 MB 的
+Arknights 主视觉、Popucom 的 334 KB 主视觉，以及 10 张 474×474 的游戏封面。提取脚本的
+做法就是扫 `RIFF`+`WEBP`、`\x89PNG`、`\xff\xd8\xff`，按容器长度切出来；Qt 资源没有
+`qres` 头（它是编译进二进制的 C++ 数组），所以按文件签名扫比找 RCC 树更省事。
+
+> **版权**：这些是鹰角网络的美术资源，从本机安装的启动器里取出来只为对齐界面，**不要**
+> 随仓库分发。发布版应换成自有素材，或把 `dist/assets/background.webp` 与三个
+> `tab-*.png` 从发布包里去掉（窗口会回落到灰色占位，代码里保留了 `--stage` 兜底色）。
+
 ## 现在能看到的
 
 | 界面 | 证据 | 结论 |
 |---|---|---|
-| 主界面（三个发行版、选中、状态点、版本、内核句子） | `images/p4-gui-board.png` | 桌面版被选中并诊断，web/tui 角标为"未检查"的灰点 |
+| 主界面（三个发行版、选中、状态点、版本、内核句子） | `images/p4-gui-board.jpg` | 桌面版被选中并诊断，web/tui 角标为"未检查"的灰点 |
 | 切到 web 发行版 | `O824_GUI_QUERY=kind=web` 截图 | 选中第二个槽位，版本 0.2.1-rc.5，角标变绿，桌面版退回灰点 |
 | 空机器（三个槽位都没有） | `O824_GUI_EMPTY=1` 截图 | 三个图变灰，主按钮变成"安装 DeepSeek Harness" |
 | 有问题（f01 树） | `O824_ROOT=…/f01/app O824_HOME=…/f01/home` 截图 | 橙点、标题变"起不来"、按钮变"一键修复"（扳手图标） |
 | 详情（发现问题） | 同上 + `O824_GUI_DETAILS=1` | 黄色左边条卡片、原因、下一步、复制/关闭/一键修复 |
 | 详情（没有问题） | 正常机器 + `O824_GUI_DETAILS=1` | 绿色对勾 + "没有发现问题。" |
-| ≡ 菜单 | `images/p4-gui-menu.png` | 四项与参考图对应，最后一项有分隔线，按钮变 × |
-| 设置 | `images/p4-gui-settings.png` | 左导航 + 三组开关，浅色勾选框，背景模糊 |
+| ≡ 菜单 | `images/p4-gui-menu.jpg` | 四项与参考图对应，最后一项有分隔线，按钮变 × |
+| 设置 | `images/p4-gui-settings.jpg` | 左导航 + 三组开关，浅色勾选框，背景模糊 |
 | 关于 | `O824_GUI_ABOUT=1` 截图 | logo、版本、非官方/未签名/开源、仓库地址、四个动作 |
 | 安装引导 | `O824_GUI_GUIDE=1` 截图 | 三条官方方式、命令、复制按钮 |
 | 未签名说明 | `O824_GUI_TRUST=1` 截图 | 原有 `trust_help` 文案原样进入弹层 |
