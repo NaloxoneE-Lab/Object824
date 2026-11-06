@@ -21,6 +21,10 @@ o824-formproc = { path = "../../crates/o824-formproc" }
 o824-state = { path = "../../crates/o824-state" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# The announcement bar reads the DeepSeek docs pages. The window cannot: the site answers
+# without CORS headers, so the fetch has to happen in this process. rustls only — no OpenSSL,
+# no system TLS store to configure.
+ureq = { version = "2", default-features = false, features = ["tls"] }
 tauri = { version = "2", features = ["tray-icon"] }
 windows = { version = "0.58", features = [
   "Win32_Foundation",

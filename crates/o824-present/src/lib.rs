@@ -562,6 +562,18 @@ fn catalog() -> &'static [(&'static str, &'static str, &'static str)] {
         // empty slot different from "nothing at all is installed".
         ("first.absent.headline", "{name} is not installed yet", "{name} 还没有安装"),
         ("first.absent.reason", "This computer has no copy of it. The next step shows the official ways to get one.", "这台电脑上找不到它的安装。下一步会给出官方获取方式。"),
+        // The top-up control and the community rail. Both exist because the product behind
+        // this window has an account system and a docs site; the label is the link's own
+        // name, and nothing in it describes how the machine works.
+        ("chrome.topup", "Top up", "充值中心"),
+        ("chrome.community", "Community", "社区"),
+        ("chrome.docs", "Docs", "文档"),
+        ("chrome.mail", "Email", "邮箱"),
+        // The announcement bar. Its rows are written by the docs site and are not translated
+        // here; only the two tabs and the empty state belong to this window.
+        ("chrome.news", "News", "新闻"),
+        ("chrome.changelog", "Changelog", "更新日志"),
+        ("chrome.notice_empty", "Nothing new right now", "暂时没有新内容"),
     ]
 }
 

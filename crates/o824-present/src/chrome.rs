@@ -105,6 +105,16 @@ pub struct Chrome {
     pub nothing_to_repair: String,
     pub kernel_missing: String,
     pub kernel_hint: String,
+    /// The header's top-up control.
+    pub topup: String,
+    /// The right rail: one label per link, plus the heading it belongs to.
+    pub community: String,
+    pub docs: String,
+    pub mail: String,
+    /// The announcement bar: two tabs, and the sentence for an empty feed.
+    pub news: String,
+    pub changelog: String,
+    pub notice_empty: String,
 }
 
 /// The shell's labels for one language.
@@ -190,6 +200,13 @@ pub fn chrome(locale: Locale) -> Chrome {
         nothing_to_repair: text(locale, "chrome.nothing_to_repair"),
         kernel_missing: text(locale, "chrome.kernel_missing"),
         kernel_hint: text(locale, "chrome.kernel_hint"),
+        topup: text(locale, "chrome.topup"),
+        community: text(locale, "chrome.community"),
+        docs: text(locale, "chrome.docs"),
+        mail: text(locale, "chrome.mail"),
+        news: text(locale, "chrome.news"),
+        changelog: text(locale, "chrome.changelog"),
+        notice_empty: text(locale, "chrome.notice_empty"),
     }
 }
 

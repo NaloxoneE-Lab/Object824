@@ -10,17 +10,20 @@
 
 :root {
   /* Sampled from the reference: the start control is #fdfc00, the rail #1c1b1d, the
-     gutter behind the panels #a5a5a5, the floating buttons #242326. */
+     floating buttons #242326. The window itself has no colour now — the 12px margin and the
+     gutter show the desktop, as the launcher's do. */
   --yellow: #fdfc00;
+  /* The launcher's :root theme block: the start control has four states, not a filter. */
+  --yellow-hover: #fefd4d;
+  --yellow-pressed: #e4e300;
+  --yellow-disabled: #a0a0a0;
+  --yellow-disabled-hover: #888888;
   --ink: #17171a;
   --rail: #1c1b1d;
   --chrome: #242326;
   --stage: #c4c4c4;
-  /* The board behind the two panels. It is the window, not a third panel: the rail and
-     the stage float on it, each with its own radius, separated by a gutter of this colour. */
-  --frame: #a5a5a5;
-  --font: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC",
-    system-ui, sans-serif;
+  --font: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", "PingFang SC", system-ui,
+    sans-serif;
   --mono: "Cascadia Mono", "Consolas", "SFMono-Regular", ui-monospace, monospace;
 }
 
@@ -72,13 +75,16 @@ button {
 .app {
   position: relative;
   display: grid;
-  /* The launcher's CSS viewport is 1266×695: an 88px rail, an 8px gutter, a 16px radius. */
+  /* The launcher's root: `flex h-screen rounded-3xl p-3 gap-2` with no background at all. What
+     a person sees is two 18px-radius cards floating 12px inside the window, with the desktop
+     showing through the margin and the 8px gutter between them. */
   grid-template-columns: 88px minmax(0, 1fr);
   gap: 8px;
   height: 100vh;
-  border-radius: 16px;
+  padding: 12px;
+  border-radius: 24px;
   overflow: hidden;
-  background: var(--frame);
+  background: transparent;
 }
 
 /* ------------------------------------------------------------------ rail */
@@ -89,24 +95,26 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 30px 0 0;
+  /* The launcher's rail is `py-[1.25rem]`: 20px above the logo, and the logo is 54×48. */
+  padding: 20px 0 0;
   overflow: hidden;
-  border-radius: 16px;
-  background: linear-gradient(180deg, #1d1c1e 0%, #19181a 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  background: rgba(24, 23, 26, 0.9);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
 }
 
 .rail-logo {
-  width: 48px;
-  height: 34px;
+  width: 54px;
+  height: 48px;
   display: grid;
   place-items: center;
 }
 
 .rail-logo img {
-  width: 45px;
-  height: auto;
+  width: 54px;
+  height: 48px;
   display: block;
-  opacity: 0.96;
 }
 
 .tabs {
@@ -154,15 +162,53 @@ button {
   inset: -6px;
   border-radius: 10px;
   border: 2px solid transparent;
-  transition: border-color 120ms ease;
+  transition: border-color 300ms ease;
+}
+
+/* The launcher's tile scales on the whole box — ring included — 1.08 on hover and 0.97 while
+   pressed, over 300ms ease-in-out. */
+.tab {
+  transition: transform 300ms ease-in-out;
+  will-change: transform;
+}
+
+.tab:hover {
+  transform: scale(1.08);
+}
+
+.tab:active {
+  transform: scale(0.97);
 }
 
 .tab:hover::after {
-  border-color: rgba(255, 255, 255, 0.28);
+  border-color: rgba(255, 255, 255, 0.35);
 }
 
 .tab.is-active::after {
-  border-color: #f2f2f3;
+  border-color: rgba(255, 255, 255, 0.75);
+}
+
+/* While dragging, the tile follows the pointer exactly (no transition) and sits above its
+   neighbours; the 8px activation threshold lives in app.js. */
+.tab.is-dragging {
+  z-index: 3;
+  transition: none;
+  cursor: grabbing;
+}
+
+/* The launcher's `.sorting-shake`, played once the tile lands. */
+.tab.is-landing {
+  animation: sorting-shake 250ms;
+}
+
+@keyframes sorting-shake {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(2px);
+  }
 }
 
 .tab[data-state="absent"] img {
@@ -271,9 +317,21 @@ button {
   position: relative;
   min-width: 0;
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: 18px;
   background: var(--stage);
   color: var(--ink);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+/* The launcher keeps a 1px white/10 hairline inside the panel, above the art and the copy. */
+.stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  pointer-events: none;
 }
 
 /* The launcher's own Endfield theme art, extracted from Games.exe (the Qt resource blob
@@ -285,29 +343,257 @@ button {
   background: url("assets/background.webp") center center / cover no-repeat;
 }
 
+/* --------------------------------------------------------------- community */
+
+/* The launcher's right rail: 56px, `rounded-l-[16px]`, black at 30% with a 6px blur, a
+   hairline on the left edge, and 30px round buttons 10px apart. It is vertically centred,
+   which is what keeps it clear of the window controls. */
+.community {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  z-index: 7;
+  width: 56px;
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-right: 0;
+  border-radius: 16px 0 0 16px;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(6px);
+}
+
+.community-btn {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #ffffff;
+  cursor: pointer;
+  transition: background 200ms ease, box-shadow 200ms ease;
+}
+
+.community-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+}
+
+.community-btn .ico {
+  width: 18px;
+  height: 18px;
+}
+
+/* ------------------------------------------------------------------ notice */
+
+/* The launcher's banner-announcement-container: 146px tall, one 16px radius, a feature tile
+   and a list panel sharing it, and a shadow that lifts the whole card off the art. */
+.notice {
+  position: absolute;
+  left: 40px;
+  /* The banner and the start column share one bottom line in the launcher's footer. */
+  bottom: 40px;
+  z-index: 5;
+  display: flex;
+  height: 146px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.65);
+}
+
+.notice-feature {
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  border: 0;
+  text-align: left;
+  color: #ffffff;
+  cursor: pointer;
+  background: linear-gradient(150deg, rgba(24, 23, 26, 0.94), rgba(24, 23, 26, 0.76));
+}
+
+.notice-kicker {
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  color: var(--yellow);
+}
+
+.notice-headline {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* YaHei runs wider than Segoe UI: without balancing, a two-line headline leaves one
+     character alone on the second line. */
+  text-wrap: balance;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.notice-meta {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.notice-panel {
+  width: 420px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(24, 23, 26, 0.92);
+  backdrop-filter: blur(6px);
+}
+
+.notice-tabs {
+  display: flex;
+  gap: 16px;
+  padding: 12px 16px 0;
+}
+
+/* The launcher's tab: 13px/700, white when active, white/35 otherwise, and a 3px primary
+   rule under the active one. */
+.notice-tab {
+  position: relative;
+  padding: 0 0 9px;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.3s ease;
+}
+
+.notice-tab.is-active {
+  color: #ffffff;
+}
+
+.notice-tab.is-active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--yellow);
+}
+
+.notice-list {
+  flex: 1;
+  margin: 0;
+  padding: 6px 8px 12px;
+  list-style: none;
+  overflow-y: auto;
+  /* A 146px card has no room for a scrollbar; the fade below says there is more. */
+  scrollbar-width: none;
+  /* The launcher fades the last row out rather than cutting it off. */
+  mask-image: linear-gradient(180deg, #000 0, #000 78%, rgba(0, 0, 0, 0.12) 100%);
+}
+
+.notice-list::-webkit-scrollbar {
+  display: none;
+}
+
+.notice-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.notice-row:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.notice-date {
+  flex: none;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.notice-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notice-empty {
+  padding: 20px 10px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
 /* ---------------------------------------------------------------- top bar */
 
 .topbar {
   position: absolute;
+  /* The launcher's header is `fixed top-3 right-3 p-4` inside a window that is itself inset
+     12px, so its content sits 16px from the rail/panel edge. We do not have the window inset
+     yet, so what carries over is the edge-relative number, not the viewport one. */
   top: 16px;
-  right: 28px;
+  right: 16px;
   z-index: 8;
   display: flex;
   align-items: center;
   gap: 16px;
 }
 
-/* The launcher's .header-icon: 2.5rem (40px), 0.5px white/10 border, #18171a at 95%,
-   ​0 2px 6px black/55. */
+/* Two groups — the account control on the left, the window controls on the right — split by a
+   1×24px white/35 rule with 16px either side (`w-[1px] h-[1.5rem] bg-white/[0.35] mx-4`). */
+.topbar-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* The launcher's left group is `gap-4` (16px) and its right group `gap-3` (12px). */
+.topbar-group:first-child {
+  gap: 16px;
+}
+
+.topbar-sep {
+  width: 1px;
+  height: 24px;
+  flex: none;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* The launcher's .header-icon: 2.5rem (40px) of content plus a 0.5px border, and it sets
+   `box-sizing: initial` so the border is added rather than eaten — the button is 41×41.
+   There is no transition on the fill: the launcher switches it instantly. */
 .chip,
 .round {
+  box-sizing: content-box;
   border: 0.5px solid rgba(255, 255, 255, 0.1);
   background: rgba(24, 23, 26, 0.95);
   color: #f4f4f5;
   cursor: pointer;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(10px);
-  transition: background 120ms ease;
 }
 
 .chip:hover,
@@ -321,8 +607,6 @@ button {
   display: flex;
   align-items: center;
   gap: 4px;
-  /* The launcher puts a wider gap between the login pill and the three circles. */
-  margin-right: 20px;
   padding: 0 12px;
   border-radius: 100px;
   font-size: 13px;
@@ -366,14 +650,36 @@ button {
   height: 24px;
 }
 
+/* The launcher's wallet glyph is a 24px component, like the sign-in figure. */
+#topup .ico {
+  width: 24px;
+  height: 24px;
+}
+
 /* -------------------------------------------------------------- hero copy */
 
 .hero-copy {
   position: absolute;
-  left: 44px;
-  bottom: 120px;
+  /* Same left edge as the announcement card below it. */
+  left: 40px;
+  /* Above the announcement card, which now ends 40px above the panel's bottom. */
+  bottom: 210px;
   z-index: 4;
   max-width: 600px;
+}
+
+/* The launcher's page transition: the copy arrives with opacity 0 → 1 and a short lift. This
+   is the enter half only — the content is replaced synchronously, so there is nothing to
+   animate out. */
+.hero-copy.is-arriving {
+  animation: hero-arrive 300ms ease-out;
+}
+
+@keyframes hero-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
 }
 
 .eyebrow {
@@ -466,17 +772,17 @@ button {
 
 .launch {
   position: absolute;
-  /* The reference's pill is 275×75 at 88px from the right and 51px above the window
-     bottom, with the checkbox row starting at the pill's left edge. The launcher's own
-     numbers: 220×60, 70px from the right, 17px above the bottom. */
-  right: 70px;
-  bottom: 17px;
+  /* The launcher's footer is `pl-10 pr-[60px] pb-10`, so the start column sits 60px from the
+     panel's right edge and its pill ends 40px above the panel's bottom. The block here also
+     carries the checkbox (16px, 10px below the pill), hence the 14px anchor. */
+  right: 60px;
+  bottom: 14px;
   z-index: 9;
   width: 220px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 9px;
+  gap: 10px;
 }
 
 .cta-shell {
@@ -490,8 +796,24 @@ button {
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.55);
 }
 
+/* The launcher has four fills, not an opacity ramp: idle is the disabled grey, and hovering a
+   disabled pill darkens it one step. */
 .cta-shell.is-idle {
-  opacity: 0.8;
+  background: var(--yellow-disabled);
+}
+
+.cta-shell.is-idle:hover {
+  background: var(--yellow-disabled-hover);
+}
+
+/* Hover and press tint the pill only while the pointer is over the label half; the menu circle
+   at the right end is its own target and does not light the pill up. */
+.cta-shell:has(#primary:not(:disabled):hover) {
+  background: var(--yellow-hover);
+}
+
+.cta-shell:has(#primary:not(:disabled):active) {
+  background: var(--yellow-pressed);
 }
 
 .cta {
@@ -510,12 +832,8 @@ button {
   cursor: pointer;
 }
 
-.cta:hover {
-  filter: brightness(1.04);
-}
-
 .cta:disabled {
-  cursor: default;
+  cursor: not-allowed;
 }
 
 #primary-label {
@@ -574,9 +892,46 @@ button {
   background: #5a5718;
 }
 
-.menu-toggle .ico {
+/* Three 18×2px bars, 3px apart, that become the cross. */
+.menu-bars {
+  position: relative;
+  display: block;
   width: 18px;
   height: 12px;
+}
+
+.menu-bars i {
+  position: absolute;
+  left: 0;
+  width: 18px;
+  height: 2px;
+  border-radius: 1px;
+  background: #ffffff;
+  transition: transform 100ms ease, opacity 100ms ease;
+}
+
+.menu-bars i:nth-child(1) {
+  top: 0;
+}
+
+.menu-bars i:nth-child(2) {
+  top: 5px;
+}
+
+.menu-bars i:nth-child(3) {
+  top: 10px;
+}
+
+.menu-toggle[aria-expanded="true"] .menu-bars i:nth-child(1) {
+  transform: translateY(5px) rotate(45deg);
+}
+
+.menu-toggle[aria-expanded="true"] .menu-bars i:nth-child(2) {
+  opacity: 0;
+}
+
+.menu-toggle[aria-expanded="true"] .menu-bars i:nth-child(3) {
+  transform: translateY(-5px) rotate(-45deg);
 }
 
 .checkline {
@@ -592,23 +947,31 @@ button {
 
 .checkline input {
   appearance: none;
-  width: 14px;
-  height: 14px;
+  /* The launcher's `Lm`: 16×16, r4, no border at all — the fill carries the state. */
+  width: 16px;
+  height: 16px;
   margin: 0;
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.35);
+  border: 0;
+  border-radius: 4px;
+  background-color: rgba(255, 255, 255, 0.25);
   cursor: pointer;
   flex: none;
 }
 
+.checkline input:hover {
+  background-color: rgba(255, 255, 255, 0.55);
+}
+
 .checkline input:checked {
-  border-color: var(--yellow);
-  background-color: var(--yellow);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.2 2.2L9.6 3.6' fill='none' stroke='%2317171a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-size: 15px 15px;
+  background-color: rgba(255, 255, 255, 0.75);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6.26118 11.6228L12.884 5M3.14999 7.1919L5.50692 9.54883' fill='none' stroke='%23000' stroke-width='1.81818'/%3E%3C/svg%3E");
+  background-size: 16px 16px;
   background-position: center;
   background-repeat: no-repeat;
+}
+
+.checkline input:checked:hover {
+  background-color: #ffffff;
 }
 
 /* ------------------------------------------------------------------- menu */
@@ -616,51 +979,67 @@ button {
 .menu {
   position: absolute;
   right: 0;
-  bottom: calc(100% + 20px);
-  /* The launcher's main-button menu is 220px wide, same as the button. */
+  /* The launcher's popover: `placement:top-right, offset:8` over the start control. */
+  bottom: calc(100% + 8px);
   width: 220px;
-  padding: 6px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
-  border-radius: 10px;
-  background: #232326;
-  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.36);
+  border-radius: 8px;
+  border: 0.5px solid rgba(255, 255, 255, 0.1);
+  background: rgba(24, 23, 26, 0.9);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.65);
+}
+
+/* The launcher's popover fades in over 300ms; it leaves by unmounting, so there is no exit. */
+.menu:not([hidden]) {
+  animation: menu-in 300ms ease-out;
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+  }
 }
 
 .menu-item {
-  padding: 10px 14px;
+  /* 18px line box + 12px either side = the launcher's 42px row. */
+  padding: 12px 8px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 4px;
   background: transparent;
-  color: #ececee;
-  font-size: 13px;
-  font-weight: 500;
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 400;
   text-align: left;
   white-space: nowrap;
   cursor: pointer;
 }
 
 .menu-item:hover:not(:disabled) {
-  background: #2f2f34;
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .menu-item:disabled {
-  color: #77777f;
-  cursor: default;
+  color: rgba(255, 255, 255, 0.35);
+  cursor: not-allowed;
 }
 
 .menu-item.separated {
   margin-top: 6px;
   padding-top: 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 0 0 8px 8px;
+  border-top: 0.5px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0 0 4px 4px;
 }
 
 /* ------------------------------------------------------------------ toast */
 
 .toast {
   position: fixed;
-  left: 104px;
+  /* Clear of the rail (12px margin + 88px rail + 16px). */
+  left: 116px;
   bottom: 26px;
   z-index: 70;
   max-width: 420px;
@@ -700,7 +1079,7 @@ button {
   place-items: center;
   background: rgba(9, 9, 11, 0.34);
   backdrop-filter: blur(8px);
-  animation: fade 120ms ease-out;
+  animation: fade 200ms ease-out;
 }
 
 @keyframes fade {
@@ -720,13 +1099,13 @@ button {
   background: #232326;
   color: #ededf0;
   box-shadow: 0 34px 90px rgba(0, 0, 0, 0.5);
-  animation: lift 140ms ease-out;
+  animation: lift 200ms ease-out;
 }
 
 @keyframes lift {
   from {
     opacity: 0;
-    transform: scale(0.985);
+    transform: scale(0.95);
   }
 }
 
@@ -978,6 +1357,7 @@ button {
 
 .about-logo {
   width: 58px;
+  height: 52px;
   margin-bottom: 12px;
 }
 
@@ -1260,8 +1640,9 @@ button {
 }
 
 .checkline.dark input {
-  border-color: #5f5f67;
-  background: transparent;
+  /* The sheet variant keeps a hairline, because it sits on a panel rather than on art. */
+  border: 1px solid #5f5f67;
+  background-color: transparent;
 }
 
 .checkline.dark input:checked {
@@ -1314,17 +1695,29 @@ button {
 
 /* ---------------------------------------------------------------- scrollbar */
 
+/* The launcher's scrollbar: 4px, a 25% white thumb with a 3px radius, 50% on hover, and a
+   transparent track inset 10px top and bottom. */
 .sheet-body::-webkit-scrollbar,
 .settings-pages::-webkit-scrollbar {
-  width: 10px;
+  width: 4px;
+  height: 4px;
+}
+
+.sheet-body::-webkit-scrollbar-track,
+.settings-pages::-webkit-scrollbar-track {
+  margin: 10px 0;
+  background: transparent;
 }
 
 .sheet-body::-webkit-scrollbar-thumb,
 .settings-pages::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
-  border-radius: 999px;
-  background-clip: content-box;
-  background-color: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+  background-color: rgba(255, 255, 255, 0.25);
+}
+
+.sheet-body::-webkit-scrollbar-thumb:hover,
+.settings-pages::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.5);
 }
 
 @media (prefers-reduced-motion: reduce) {

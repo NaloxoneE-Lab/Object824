@@ -13,7 +13,7 @@
     <div class="app" id="app">
       <aside class="rail" data-tauri-drag-region>
         <div class="rail-logo" data-tauri-drag-region>
-          <img src="assets/logo.png" alt="O824" />
+          <img src="assets/logo.svg" alt="O824" />
         </div>
         <nav class="tabs" id="tabs" aria-label=""></nav>
         <!-- The launcher draws its "all games" button as four 6×6 white squares in a 14×14
@@ -28,33 +28,74 @@
              contains the grid, the yellow blocks and the ENDFIELD watermark. -->
         <div class="art" data-tauri-drag-region aria-hidden="true"></div>
 
+        <!-- The launcher's right rail: a 56px strip of 30px round buttons, vertically centred,
+             sitting under the window controls. Its entries are rendered from one list in
+             app.js so the links can be swapped without touching the markup. -->
+        <nav class="community" id="community" aria-label=""></nav>
+
+        <!-- The announcement bar: the launcher's 146px card at the bottom left, a feature
+             tile on the left and a two-tab list on the right. The rows come from the
+             DeepSeek docs site through the `news` command. -->
+        <section class="notice" id="notice" hidden>
+          <button class="notice-feature" id="notice-feature">
+            <span class="notice-kicker" id="notice-kicker"></span>
+            <span class="notice-headline" id="notice-headline"></span>
+            <span class="notice-meta" id="notice-meta"></span>
+          </button>
+          <div class="notice-panel">
+            <div class="notice-tabs" id="notice-tabs" role="tablist">
+              <button class="notice-tab is-active" id="notice-tab-news" data-tab="news" role="tab"></button>
+              <button class="notice-tab" id="notice-tab-updates" data-tab="updates" role="tab"></button>
+            </div>
+            <ul class="notice-list" id="notice-list"></ul>
+          </div>
+        </section>
+
         <header class="topbar">
-          <button class="chip" id="update">
-            <!-- The four header icons are the launcher's own web-UI components (extracted
-                 from res/web/index.ff0a17.js: xf, Ef, vf, of), not redrawings. The label
-                 stays ours: this launcher checks for updates, it does not sign in. -->
-            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
-              <path fill="currentColor" stroke="none" fill-rule="evenodd" clip-rule="evenodd" d="M13.5 8.5C13.5 7.67157 12.8284 7 12 7C11.1716 7 10.5 7.67157 10.5 8.5C10.5 9.32843 11.1716 10 12 10C12.8284 10 13.5 9.32843 13.5 8.5ZM15.5 8.5C15.5 10.433 13.933 12 12 12C10.067 12 8.5 10.433 8.5 8.5C8.5 6.567 10.067 5 12 5C13.933 5 15.5 6.567 15.5 8.5ZM5 13H19V19H13V17H17V15H7V17H11V19H5V13Z" />
-            </svg>
-            <span id="update-label"></span>
-            <i class="dot" id="update-dot" hidden></i>
-          </button>
-          <button class="round" id="settings" aria-label="">
-            <svg class="ico" viewBox="0 0 16 16" aria-hidden="true">
-              <path fill="currentColor" stroke="none" fill-rule="evenodd" clip-rule="evenodd" d="M4.36128 3.22889L3.61641 2.48401L2.2022 3.89823L2.99448 4.69051C2.50552 5.42858 2.17543 6.28107 2.05297 7.19922L0.5 7.19922V9.19922H2.11986C2.30316 10.1028 2.68953 10.9327 3.22926 11.6392L2.48445 12.384L3.89866 13.7982L4.69104 13.0059C5.42898 13.4946 6.28128 13.8246 7.19922 13.947V15.5H9.19921L9.19922 13.8801C9.96581 13.7246 10.6794 13.423 11.3095 13.0055L12.1017 13.7977L13.5159 12.3835L12.7711 11.6387C13.3106 10.9323 13.6969 10.1026 13.8801 9.19922H15.5V7.19922H13.947C13.8246 6.28129 13.4946 5.42899 13.0059 4.69104L13.7982 3.89875L12.3839 2.48453L11.6392 3.22927C10.9327 2.68953 10.1028 2.30316 9.19922 2.11986L9.19922 0.5H7.19922V2.05297C6.14117 2.19408 5.17032 2.61093 4.36128 3.22889ZM8 12.4C10.4301 12.4 12.4 10.4301 12.4 8C12.4 5.56995 10.4301 3.6 8 3.6C5.56995 3.6 3.6 5.56995 3.6 8C3.6 10.4301 5.56995 12.4 8 12.4ZM8 6.58569L8.28284 6.86854L9.13137 7.71706L9.41421 7.99991L9.13137 8.28275L8.28284 9.13128L8 9.41412L7.71716 9.13128L6.86863 8.28275L6.58579 7.99991L6.86863 7.71706L7.71716 6.86854L8 6.58569Z" />
-            </svg>
-          </button>
-          <button class="round" id="minimize" aria-label="">
-            <svg class="ico" viewBox="0 0 14 14" aria-hidden="true">
-              <line x1="0" y1="6.8" x2="14" y2="6.8" stroke="currentColor" stroke-width="2" />
-            </svg>
-          </button>
-          <button class="round" id="close" aria-label="">
-            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="12" y="11.2928" width="1" height="1" transform="rotate(45 12 11.2928)" stroke="currentColor" fill="none" />
-              <path fill="currentColor" stroke="none" fill-rule="evenodd" clip-rule="evenodd" d="M13.5562 9.31353L17.0917 5.778L18.5059 7.19221L14.9704 10.7277L13.5562 9.31353ZM5.77746 17.0912L9.31299 13.5556L10.7272 14.9698L7.19167 18.5054L5.77746 17.0912ZM14.687 13.5556L18.2225 17.0912L16.8083 18.5054L13.2728 14.9698L14.687 13.5556ZM6.90883 5.77745L10.4444 9.31298L9.03015 10.7272L5.49462 7.19166L6.90883 5.77745Z" />
-            </svg>
-          </button>
+          <div class="topbar-group">
+            <button class="chip" id="update">
+              <!-- The four header icons are the launcher's own web-UI components (extracted
+                   from res/web/index.ff0a17.js: xf, Ef, vf, of), not redrawings. The label
+                   stays ours: this launcher checks for updates, it does not sign in. -->
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="currentColor" stroke="none" fill-rule="evenodd" clip-rule="evenodd" d="M13.5 8.5C13.5 7.67157 12.8284 7 12 7C11.1716 7 10.5 7.67157 10.5 8.5C10.5 9.32843 11.1716 10 12 10C12.8284 10 13.5 9.32843 13.5 8.5ZM15.5 8.5C15.5 10.433 13.933 12 12 12C10.067 12 8.5 10.433 8.5 8.5C8.5 6.567 10.067 5 12 5C13.933 5 15.5 6.567 15.5 8.5ZM5 13H19V19H13V17H17V15H7V17H11V19H5V13Z" />
+              </svg>
+              <span id="update-label"></span>
+              <i class="dot" id="update-dot" hidden></i>
+            </button>
+            <!-- The launcher's wallet icon (`If`), the second control of its left group. -->
+            <button class="round" id="topup" aria-label="">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+                <g fill="none" stroke="currentColor" stroke-width="1.6">
+                  <path d="M15 18H8H6H4V6H20V10.2999" />
+                  <path d="M6 15H9" />
+                  <path d="M4 9.5H20" />
+                </g>
+                <path fill="currentColor" d="M22.2432 13.4844H18.3369V14.0781H22.6289V16.75H18.3369V17.3428H22.2432L19.6729 18.8271L16.7168 17.1201V13.707L19.6729 12L22.2432 13.4844ZM17.4463 16.4531H18.04V14.375H17.4463V16.4531Z" />
+              </svg>
+            </button>
+          </div>
+          <!-- The launcher splits the account controls from the window controls with a
+               1×24px white/35 rule, 16px either side. -->
+          <span class="topbar-sep" aria-hidden="true"></span>
+          <div class="topbar-group">
+            <button class="round" id="settings" aria-label="">
+              <svg class="ico" viewBox="0 0 16 16" aria-hidden="true">
+                <path fill="currentColor" stroke="none" fill-rule="evenodd" clip-rule="evenodd" d="M4.36128 3.22889L3.61641 2.48401L2.2022 3.89823L2.99448 4.69051C2.50552 5.42858 2.17543 6.28107 2.05297 7.19922L0.5 7.19922V9.19922H2.11986C2.30316 10.1028 2.68953 10.9327 3.22926 11.6392L2.48445 12.384L3.89866 13.7982L4.69104 13.0059C5.42898 13.4946 6.28128 13.8246 7.19922 13.947V15.5H9.19921L9.19922 13.8801C9.96581 13.7246 10.6794 13.423 11.3095 13.0055L12.1017 13.7977L13.5159 12.3835L12.7711 11.6387C13.3106 10.9323 13.6969 10.1026 13.8801 9.19922H15.5V7.19922H13.947C13.8246 6.28129 13.4946 5.42899 13.0059 4.69104L13.7982 3.89875L12.3839 2.48453L11.6392 3.22927C10.9327 2.68953 10.1028 2.30316 9.19922 2.11986L9.19922 0.5H7.19922V2.05297C6.14117 2.19408 5.17032 2.61093 4.36128 3.22889ZM8 12.4C10.4301 12.4 12.4 10.4301 12.4 8C12.4 5.56995 10.4301 3.6 8 3.6C5.56995 3.6 3.6 5.56995 3.6 8C3.6 10.4301 5.56995 12.4 8 12.4ZM8 6.58569L8.28284 6.86854L9.13137 7.71706L9.41421 7.99991L9.13137 8.28275L8.28284 9.13128L8 9.41412L7.71716 9.13128L6.86863 8.28275L6.58579 7.99991L6.86863 7.71706L7.71716 6.86854L8 6.58569Z" />
+              </svg>
+            </button>
+            <button class="round" id="minimize" aria-label="">
+              <svg class="ico" viewBox="0 0 14 14" aria-hidden="true">
+                <line x1="0" y1="6.8" x2="14" y2="6.8" stroke="currentColor" stroke-width="2" />
+              </svg>
+            </button>
+            <button class="round" id="close" aria-label="">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="12" y="11.2928" width="1" height="1" transform="rotate(45 12 11.2928)" stroke="currentColor" fill="none" />
+                <path fill="currentColor" stroke="none" fill-rule="evenodd" clip-rule="evenodd" d="M13.5562 9.31353L17.0917 5.778L18.5059 7.19221L14.9704 10.7277L13.5562 9.31353ZM5.77746 17.0912L9.31299 13.5556L10.7272 14.9698L7.19167 18.5054L5.77746 17.0912ZM14.687 13.5556L18.2225 17.0912L16.8083 18.5054L13.2728 14.9698L14.687 13.5556ZM6.90883 5.77745L10.4444 9.31298L9.03015 10.7272L5.49462 7.19166L6.90883 5.77745Z" />
+              </svg>
+            </button>
+          </div>
         </header>
 
         <section class="hero-copy" id="hero">
@@ -88,9 +129,9 @@
               <span id="primary-label"></span>
             </button>
             <button class="menu-toggle" id="menu-toggle" aria-label="" aria-expanded="false">
-              <svg class="ico" viewBox="0 0 18 12" aria-hidden="true" id="menu-icon">
-                <path fill="currentColor" stroke="none" d="M18 12H0V10H18V12ZM18 7H0V5H18V7ZM18 2H0V0H18V2Z" />
-              </svg>
+              <!-- Three bars, not two swapped icons: the launcher turns the outer two into the
+                   cross (move ±5px, rotate ±45°) and fades the middle one, in 100ms. -->
+              <span class="menu-bars" aria-hidden="true"><i></i><i></i><i></i></span>
             </button>
           </div>
           <label class="checkline">
@@ -160,7 +201,7 @@
 
             <section id="page-about" hidden>
               <div class="about">
-                <img class="about-logo" src="assets/logo.png" alt="" />
+                <img class="about-logo" src="assets/logo.svg" alt="" />
                 <div class="about-name">O824</div>
                 <div class="about-version" id="about-version"></div>
                 <div class="about-tagline" id="about-tagline"></div>

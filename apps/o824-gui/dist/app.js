@@ -25,7 +25,27 @@ const ART = {
   tui: "assets/tab-tui.png",
 };
 const SETTINGS_KEY = "o824.settings.v1";
+const ORDER_KEY = "o824.order.v1";
 const REPO = "https://github.com/NaloxoneE-Lab/Object824";
+const TOPUP_URL = "https://platform.deepseek.com/top_up";
+
+// The right rail's links. The launcher builds this list from the game's own sidebar config;
+// this window has no server, so it is one array — replacing a link means editing one line,
+// the label is a key into the chrome catalog, and the icon is a key into ICONS below.
+const COMMUNITY = [
+  { label: "docs", href: "https://api-docs.deepseek.com/zh-cn/", icon: "book" },
+  { label: "repo", href: "https://github.com/deepseek-ai", icon: "repo" },
+  { label: "community", href: "https://discord.gg/Tc7c45Zzu5", icon: "chat" },
+  { label: "mail", href: "mailto:api-service@deepseek.com", icon: "mail" },
+];
+
+// 24×24 line glyphs, drawn to the same weight as the header's (1.6–1.8px, round caps).
+const COMMUNITY_ICONS = {
+  book: '<path d="M5 4.5h9a2 2 0 0 1 2 2v13H7a2 2 0 0 1-2-2V4.5Z"/><path d="M5 17.5a2 2 0 0 1 2-2h9"/><path d="M9 8h4"/>',
+  repo: '<circle cx="7" cy="6" r="2.2"/><circle cx="7" cy="18" r="2.2"/><circle cx="17" cy="12" r="2.2"/><path d="M7 8.2v7.6"/><path d="M9.2 6h3.3a2 2 0 0 1 2 2v2.4"/>',
+  chat: '<path d="M4.5 6.5h15v9.5H12l-4.5 3.5v-3.5h-3V6.5Z"/>',
+  mail: '<rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4 7 8 6 8-6"/>',
+};
 
 const state = {
   chrome: null,
@@ -36,6 +56,9 @@ const state = {
   byKind: { desktop: [], web: [], tui: [] },
   kindState: { desktop: "absent", web: "absent", tui: "absent" },
   kind: "desktop",
+  // The rail's order, draggable and remembered. `ORDER` stays the canonical set.
+  order: loadOrder(),
+  suppressClick: false,
   selectedId: null,
   copy: { headline: "…", reason: "", next_step: "", action: "" },
   findings: [],
@@ -93,6 +116,34 @@ function saveSettings() {
   }
 }
 
+/// The rail's order: a saved permutation of `ORDER`, or the canonical one.
+///
+/// Validated rather than trusted — a stale list from an older build that knew a different set
+/// of distributions would otherwise hide one and show another twice.
+function loadOrder() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ORDER_KEY) || "[]");
+    if (
+      Array.isArray(saved) &&
+      saved.length === ORDER.length &&
+      ORDER.every((kind) => saved.includes(kind))
+    ) {
+      return saved;
+    }
+  } catch {
+    /* fall through to the canonical order */
+  }
+  return ORDER.slice();
+}
+
+function saveOrder() {
+  try {
+    localStorage.setItem(ORDER_KEY, JSON.stringify(state.order));
+  } catch {
+    /* the order is a preference, not a requirement */
+  }
+}
+
 // --------------------------------------------------------------------- toast
 
 let toastTimer = 0;
@@ -138,6 +189,9 @@ function applyChrome() {
   };
 
   set("update-label", c.update);
+  $("topup").title = c.topup;
+  $("topup").setAttribute("aria-label", c.topup);
+  renderCommunity();
   set("settings-title", c.settings);
   set("nav-launcher", c.launcher_settings);
   set("nav-about", c.about);
@@ -204,7 +258,7 @@ function applyChrome() {
 
 function renderTabs() {
   $("tabs").replaceChildren(
-    ...ORDER.map((kind) => {
+    ...state.order.map((kind) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "tab";
@@ -220,11 +274,96 @@ function renderTabs() {
       badge.className = `badge ${state.kindState[kind]}`;
 
       button.append(image, badge);
-      button.addEventListener("click", () => void select(kind));
+      button.addEventListener("click", () => {
+        // A drag ends with a click on the tile it started on; that click must not select.
+        if (state.suppressClick) {
+          state.suppressClick = false;
+          return;
+        }
+        void select(kind);
+      });
       return button;
     }),
   );
   paintTabs();
+}
+
+/// Drag a tile up or down to reorder the rail, as the launcher's dnd-kit list does.
+///
+/// Pointer events rather than HTML5 drag-and-drop: the tiles are 48px, `draggable` would need
+/// a drag image, and pointer capture keeps the gesture alive when the cursor leaves the tile.
+/// The 8px threshold is the launcher's `activationConstraint`.
+const DRAG_THRESHOLD = 8;
+
+function wireReorder() {
+  const nav = $("tabs");
+  let drag = null;
+
+  nav.addEventListener("pointerdown", (event) => {
+    const tab = event.target.closest(".tab");
+    if (!tab || event.button !== 0) return;
+    drag = { tab, kind: tab.dataset.kind, startY: event.clientY, dy: 0, moved: false };
+    try {
+      tab.setPointerCapture(event.pointerId);
+    } catch {
+      /* a synthetic event has no capture target; the listeners on the nav still fire */
+    }
+  });
+
+  nav.addEventListener("pointermove", (event) => {
+    if (!drag) return;
+    drag.dy = event.clientY - drag.startY;
+    if (!drag.moved && Math.abs(drag.dy) < DRAG_THRESHOLD) return;
+    drag.moved = true;
+    drag.tab.classList.add("is-dragging");
+    drag.tab.style.transform = `translateY(${drag.dy}px)`;
+  });
+
+  const finish = () => {
+    if (!drag) return;
+    const { tab, kind, moved } = drag;
+    drag = null;
+    // Measured before the transform is cleared: the drop slot is where the tile *is*, not
+    // where it started.
+    const dragged = tab.getBoundingClientRect();
+    tab.classList.remove("is-dragging");
+    tab.style.transform = "";
+    if (!moved) return;
+
+    state.suppressClick = true;
+    const order = state.order.slice();
+    const from = order.indexOf(kind);
+    const others = [...nav.querySelectorAll(".tab")]
+      .filter((node) => node.dataset.kind !== kind)
+      .map((node) => {
+        const box = node.getBoundingClientRect();
+        return box.top + box.height / 2;
+      });
+    const center = dragged.top + dragged.height / 2;
+    let target = 0;
+    for (const other of others) if (center > other) target += 1;
+
+    order.splice(from, 1);
+    order.splice(target, 0, kind);
+    state.order = order;
+    // The screenshot hook must not leave a reordered rail behind in the profile.
+    if (!params.get("dragtest")) saveOrder();
+    renderTabs();
+    // The launcher shakes the tile once it lands.
+    $("tabs").querySelector(`.tab[data-kind="${kind}"]`)?.classList.add("is-landing");
+  };
+
+  nav.addEventListener("pointerup", finish);
+  nav.addEventListener("pointercancel", finish);
+}
+
+/// Replays the launcher's 300ms arrival on the copy: opacity 0 and a 12px lift, once.
+function pulseHero() {
+  const hero = $("hero");
+  hero.classList.remove("is-arriving");
+  // Reading the layout restarts the animation on the next frame.
+  void hero.offsetWidth;
+  hero.classList.add("is-arriving");
 }
 
 function paintTabs() {
@@ -243,6 +382,8 @@ let selectToken = 0;
 
 async function select(kind, { id = null } = {}) {
   const token = ++selectToken;
+  // Switching distributions plays the launcher's 300ms arrival on the copy below.
+  if (state.kind !== kind) pulseHero();
   state.kind = kind;
   const list = state.byKind[kind] || [];
   const install = (id && list.find((row) => row.id === id)) || list[0] || null;
@@ -750,6 +891,109 @@ async function runUpdateApply() {
   }
 }
 
+// ------------------------------------------------------- community and notice
+
+async function openExternal(href) {
+  try {
+    await invoke("open_url", { url: href });
+  } catch (error) {
+    toast(String(error), { error: true });
+  }
+}
+
+/// The right rail: one round button per entry in COMMUNITY, labelled from the copy catalog.
+function renderCommunity() {
+  const c = state.chrome;
+  const rail = $("community");
+  rail.replaceChildren();
+  rail.setAttribute("aria-label", c.community);
+  for (const entry of COMMUNITY) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "community-btn";
+    button.title = c[entry.label] || "";
+    button.setAttribute("aria-label", button.title);
+    button.innerHTML = `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${COMMUNITY_ICONS[entry.icon] || ""}</svg>`;
+    button.addEventListener("click", () => void openExternal(entry.href));
+    rail.append(button);
+  }
+}
+
+const notice = {
+  feed: null,
+  // `?notice=updates` opens the changelog tab, which is also how a screenshot reaches it.
+  tab: params.get("notice") === "updates" ? "updates" : "news",
+  first: null,
+};
+
+/// The bar's rows come from the `news` command, which caches them: this is a redraw, not a
+/// request. An empty feed hides the card rather than showing an empty shell.
+async function loadNews() {
+  try {
+    notice.feed = await invoke("news");
+  } catch (error) {
+    notice.feed = { items: [], stale: true, error: String(error) };
+  }
+  renderNotice();
+}
+
+function shortDate(date) {
+  const [year, month, day] = String(date).split("-");
+  if (!month || !day) return String(date);
+  return Number(year) === new Date().getFullYear() ? `${month}/${day}` : `${year}/${month}/${day}`;
+}
+
+function renderNotice() {
+  const c = state.chrome;
+  const items = notice.feed?.items || [];
+  $("notice").hidden = items.length === 0;
+  if (!items.length) return;
+
+  $("notice-tab-news").textContent = c.news;
+  $("notice-tab-updates").textContent = c.changelog;
+  for (const tab of document.querySelectorAll(".notice-tab")) {
+    tab.classList.toggle("is-active", tab.dataset.tab === notice.tab);
+    tab.setAttribute("aria-selected", String(tab.dataset.tab === notice.tab));
+  }
+
+  const rows = items.filter((item) => item.source === notice.tab);
+  // The card carries the newest row of the tab; the list carries the rest, so nothing is
+  // said twice.
+  notice.first = rows[0] || null;
+  $("notice-feature").disabled = !notice.first;
+  $("notice-kicker").textContent = notice.tab === "news" ? c.news : c.changelog;
+  $("notice-headline").textContent = notice.first?.title || c.notice_empty;
+  $("notice-meta").textContent = notice.first ? shortDate(notice.first.date) : "";
+
+  const list = $("notice-list");
+  list.replaceChildren();
+  const rest = rows.slice(1);
+  if (!rest.length) {
+    const empty = document.createElement("li");
+    empty.className = "notice-empty";
+    empty.textContent = c.notice_empty;
+    list.append(empty);
+    return;
+  }
+  for (const item of rest) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "notice-row";
+    row.title = item.title;
+    const date = document.createElement("span");
+    date.className = "notice-date";
+    date.textContent = shortDate(item.date);
+    const title = document.createElement("span");
+    title.className = "notice-title";
+    title.textContent = item.title;
+    row.append(date, title);
+    row.addEventListener("click", () => void openExternal(item.url));
+    const cell = document.createElement("li");
+    cell.append(row);
+    list.append(cell);
+  }
+}
+
 // ------------------------------------------------------------------------ menu
 
 function toggleMenu(force) {
@@ -758,17 +1002,9 @@ function toggleMenu(force) {
   // disabled rather than by opening an installation guide under a diagnostic label.
   $("menu-integrity").disabled = !selectedInstall();
   $("menu").hidden = !open;
+  // The bars are three elements now, so the cross is CSS's job: `aria-expanded` drives the
+  // rotate/translate, exactly as the launcher drives its framer-motion variants.
   $("menu-toggle").setAttribute("aria-expanded", String(open));
-  const icon = $("menu-icon");
-  if (open) {
-    icon.setAttribute("viewBox", "0 0 24 24");
-    icon.innerHTML =
-      '<path fill="currentColor" stroke="none" fill-rule="evenodd" clip-rule="evenodd" d="M13.5562 9.31353L17.0917 5.778L18.5059 7.19221L14.9704 10.7277L13.5562 9.31353ZM5.77746 17.0912L9.31299 13.5556L10.7272 14.9698L7.19167 18.5054L5.77746 17.0912ZM14.687 13.5556L18.2225 17.0912L16.8083 18.5054L13.2728 14.9698L14.687 13.5556ZM6.90883 5.77745L10.4444 9.31298L9.03015 10.7272L5.49462 7.19166L6.90883 5.77745Z"/>';
-  } else {
-    icon.setAttribute("viewBox", "0 0 18 12");
-    icon.innerHTML =
-      '<path fill="currentColor" stroke="none" d="M18 12H0V10H18V12ZM18 7H0V5H18V7ZM18 2H0V0H18V2Z"/>';
-  }
 }
 
 function closeMenu() {
@@ -779,6 +1015,17 @@ function closeMenu() {
 // ------------------------------------------------------------------- wiring
 
 function wire() {
+  $("topup").addEventListener("click", () => void openExternal(TOPUP_URL));
+  $("notice-feature").addEventListener("click", () => {
+    if (notice.first) void openExternal(notice.first.url);
+  });
+  for (const tab of document.querySelectorAll(".notice-tab")) {
+    tab.addEventListener("click", () => {
+      notice.tab = tab.dataset.tab;
+      renderNotice();
+    });
+  }
+
   $("primary").addEventListener("click", () => {
     if (state.busy) return;
     switch (state.copy.action) {
@@ -986,7 +1233,30 @@ async function boot() {
 
   applyChrome();
   wire();
+  wireReorder();
+  // `?dragtest=1` drives one reorder through the real pointer handlers so a screenshot can
+  // show the result. Synthetic mouse events at the OS level are off limits on this machine;
+  // dispatching them inside the page exercises the same listeners without touching the desktop.
+  if (params.get("dragtest")) {
+    setTimeout(() => {
+      const tabs = [...$("tabs").querySelectorAll(".tab")];
+      if (tabs.length < 2) return;
+      const tab = tabs[0];
+      const box = tab.getBoundingClientRect();
+      const base = { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, button: 0, buttons: 1 };
+      const y = box.top + box.height / 2;
+      tab.dispatchEvent(new PointerEvent("pointerdown", { ...base, clientY: y }));
+      tab.dispatchEvent(new PointerEvent("pointermove", { ...base, clientY: y + 90 }));
+      tab.dispatchEvent(new PointerEvent("pointerup", { ...base, clientY: y + 90 }));
+    }, 1500);
+  }
   $("after-start").checked = state.settings.afterStart;
+  // `?backdrop=%23e9e9e9` paints the window's 12px margin for screenshots: the real margin is
+  // transparent, so a capture would otherwise show whatever happened to be behind the window.
+  const backdrop = params.get("backdrop");
+  if (backdrop) $("app").style.background = backdrop;
+  // The announcement bar fetches on its own clock: it must not delay the first screen.
+  void loadNews();
 
   try {
     await refresh();

@@ -33,6 +33,8 @@ use o824_bridge::{Bridge, Options};
 use o824_present::Locale;
 use serde::Serialize;
 
+mod news;
+
 /// Which language the window speaks.
 ///
 /// `LANG` is a Unix habit: a Windows user who double-clicks the program has no LANG at all,
@@ -416,7 +418,8 @@ fn main() {
                 clear_cache,
                 open_log,
                 open_install_dir,
-                open_url
+                open_url,
+                news
             ])
             .build(tauri::generate_context!())
     });
@@ -770,10 +773,76 @@ async fn open_install_dir(install_id: String) -> Result<(), String> {
 /// Opens a link in the user's browser rather than navigating the window away from itself.
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
-    if !(url.starts_with("https://") || url.starts_with("http://")) {
-        return Err("only http(s) links can be opened".to_owned());
+    if !(url.starts_with("https://") || url.starts_with("http://") || url.starts_with("mailto:")) {
+        return Err("only http(s) and mailto links can be opened".to_owned());
     }
     shell_open(&url)
+}
+
+/// Where the announcement bar keeps its last good answer.
+///
+/// Beside the log rather than beside the program: an installed launcher lives in a folder a
+/// normal user cannot write to, and a cache that cannot be written is a cache that never
+/// spares the network. `%LOCALAPPDATA%\O824` is the first choice; a copy that cannot write
+/// there (a portable build, a locked-down machine) falls back to the program's own folder,
+/// then to `%TEMP%`. Each candidate is probed by opening it, because "the directory exists"
+/// and "this process may write in it" are different questions.
+fn news_cache_path() -> Option<std::path::PathBuf> {
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    if let Some(base) = std::env::var_os("LOCALAPPDATA") {
+        candidates.push(std::path::PathBuf::from(base).join("O824"));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(directory) = exe.parent() {
+            candidates.push(directory.to_path_buf());
+        }
+    }
+    if let Some(base) = std::env::var_os("TEMP") {
+        candidates.push(std::path::PathBuf::from(base).join("O824"));
+    }
+    candidates
+        .into_iter()
+        .map(|directory| directory.join("o824-news.json"))
+        .find(|path| {
+            if let Some(parent) = path.parent() {
+                if std::fs::create_dir_all(parent).is_err() {
+                    return false;
+                }
+            }
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .is_ok()
+        })
+}
+
+/// The announcement bar's rows.
+///
+/// `async` on purpose: the command runs on the async runtime, and the blocking fetch is
+/// pushed onto the blocking pool, so a slow docs site delays the bar and nothing else.
+#[tauri::command]
+async fn news() -> news::Feed {
+    let cache = news_cache_path();
+    let started = std::time::Instant::now();
+    let feed = tauri::async_runtime::spawn_blocking(move || news::feed(cache.as_deref()))
+        .await
+        .unwrap_or_else(|error| news::Feed {
+            items: Vec::new(),
+            fetched_at: 0,
+            stale: true,
+            error: Some(error.to_string()),
+        });
+    log_line(&format!(
+        "news: {} items, stale={} in {}ms",
+        feed.items.len(),
+        feed.stale,
+        started.elapsed().as_millis()
+    ));
+    if let Some(error) = &feed.error {
+        log_line(&format!("news: {error}"));
+    }
+    feed
 }
 
 /// Applies the staged release and lets the kernel restart the window.
