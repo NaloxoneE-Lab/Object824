@@ -62,18 +62,30 @@ fn start(data_root: &Path, install_id: &str, step: &Step, form: Form) -> Result<
         o824_state::save(&state_path, &interim)
     })?;
 
-    // A desktop the user started themselves is running already; nothing was spawned, so
-    // nothing is recorded. Writing a record for a pid we did not create would let `stop` kill
-    // a process o824 does not own.
-    let StartOutcome::Started(started) = outcome else {
-        return Ok(());
-    };
+    commit_outcome(&state_path, state, outcome, install_id)
+}
 
-    let mut record = started.record.clone();
-    record.install_id = install_id.to_owned();
-    state.remember_process(record);
-    o824_state::save(&state_path, &state)?;
-    Ok(())
+/// Writes what a start produced — including the case where it produced nothing.
+///
+/// A desktop the user started themselves is running already; `apply` spawned nothing, so
+/// nothing is recorded: a record for a pid we did not create would let `stop` kill a process
+/// o824 does not own. What *is* written is the pruned state: dead records were dropped above,
+/// and leaving them on disk is how a stale pid came to be reported as "just started".
+fn commit_outcome(
+    state_path: &Path,
+    mut state: o824_state::State,
+    outcome: StartOutcome,
+    install_id: &str,
+) -> Result<(), Error> {
+    match outcome {
+        StartOutcome::Started(started) => {
+            let mut record = started.record.clone();
+            record.install_id = install_id.to_owned();
+            state.remember_process(record);
+        }
+        StartOutcome::AlreadyRunning(_) => {}
+    }
+    o824_state::save(state_path, &state)
 }
 
 fn stop(data_root: &Path, step: &Step) -> Result<(), Error> {
@@ -110,4 +122,94 @@ fn value_argument(step: &Step, prefix: &str) -> Option<String> {
 /// The path value of a `prefix=` argument.
 fn path_argument(step: &Step, prefix: &str) -> Option<PathBuf> {
     value_argument(step, prefix).map(PathBuf::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use o824_state::ProcessRecord;
+
+    /// A record whose pid cannot be alive: pid 0 is never a user process.
+    fn dead_record(install_id: &str, home: &Path) -> ProcessRecord {
+        ProcessRecord {
+            install_id: install_id.to_owned(),
+            pid: 0,
+            port: None,
+            home: home.display().to_string(),
+            image: String::new(),
+            created: 1,
+            started_at: "2026-11-06T00:00:00Z".to_owned(),
+            log_path: String::new(),
+        }
+    }
+
+    /// The 2026-11-06 second defect: a start that found the desktop already running wrote
+    /// nothing, so the stale record of an *earlier failed* start stayed on disk and the CLI
+    /// reported its pid as the thing that had just started.
+    #[test]
+    fn the_stale_record_is_dropped_even_when_nothing_was_started() {
+        let temp = o824_fixtures::TempDir::new("o824-commit-").expect("temp dir");
+        let state_path = temp.path().join(o824_state::STATE_FILE_NAME);
+        let mut state = o824_state::State::default();
+        state.remember_process(dead_record("i3", temp.path()));
+        o824_state::save(&state_path, &state).expect("seed the stale record");
+
+        // `apply` prunes dead records before it starts anything; this is the state it
+        // would hand over.
+        let mut pruned = o824_state::load(&state_path).expect("load");
+        pruned
+            .processes
+            .retain(|_, record| lifecycle::is_alive(record));
+        assert!(
+            pruned.processes.is_empty(),
+            "the record named pid 0, which is never alive"
+        );
+
+        commit_outcome(
+            &state_path,
+            pruned,
+            StartOutcome::AlreadyRunning(4242),
+            "i3",
+        )
+        .expect("commit");
+
+        let after = o824_state::load(&state_path).expect("load after");
+        assert!(
+            !after.processes.contains_key("i3"),
+            "a start that spawned nothing must not leave a record behind: {:?}",
+            after.processes
+        );
+    }
+
+    /// And a start that did spawn something still records it.
+    #[test]
+    fn a_real_start_is_still_recorded() {
+        let temp = o824_fixtures::TempDir::new("o824-commit-").expect("temp dir");
+        let state_path = temp.path().join(o824_state::STATE_FILE_NAME);
+        let state = o824_state::State::default();
+
+        let record = ProcessRecord {
+            install_id: String::new(),
+            pid: std::process::id(),
+            port: Some(3000),
+            home: temp.path().display().to_string(),
+            image: String::new(),
+            created: 1,
+            started_at: "2026-11-06T00:00:00Z".to_owned(),
+            log_path: String::new(),
+        };
+        let started = lifecycle::Started {
+            pid: record.pid,
+            url: None,
+            port: record.port,
+            log_path: PathBuf::from(&record.log_path),
+            record,
+        };
+        commit_outcome(&state_path, state, StartOutcome::Started(started), "web").expect("commit");
+
+        let after = o824_state::load(&state_path).expect("load after");
+        let written = after.processes.get("web").expect("the record is there");
+        assert_eq!(written.pid, std::process::id());
+        assert_eq!(written.install_id, "web");
+    }
 }

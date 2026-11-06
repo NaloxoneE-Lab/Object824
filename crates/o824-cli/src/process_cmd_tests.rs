@@ -591,3 +591,67 @@ fn image_of_stand_in(child: &mut std::process::Child) -> String {
     }
     panic!("the stand-in never became visible");
 }
+
+/// The 2026-11-06 second defect: a stale record was read back as the thing a start produced.
+#[test]
+fn a_dead_record_is_not_an_answer() {
+    use o824_state::{ProcessRecord, State};
+
+    let home = std::env::temp_dir();
+    let mut state = State::default();
+    state.remember_process(ProcessRecord {
+        install_id: "i3".to_owned(),
+        // Nothing runs at pid 0; the image names no program either.
+        pid: 0,
+        port: None,
+        home: home.display().to_string(),
+        image: String::new(),
+        created: 1,
+        started_at: "2026-11-06T00:00:00Z".to_owned(),
+        log_path: String::new(),
+    });
+
+    assert!(
+        super::process_cmd::answered_start(&state, "i3", &home).is_none(),
+        "a record whose process is gone must not be reported as a start result"
+    );
+
+    // A live one is still an answer: this process is alive, and its image and creation time
+    // can be read, which is exactly what `is_alive` checks.
+    let pid = std::process::id();
+    let image = o824_formproc::image_of(pid).expect("this process has an image");
+    let created = o824_formproc::started_at(pid).expect("this process has a creation time");
+    state.remember_process(ProcessRecord {
+        install_id: "i3".to_owned(),
+        pid,
+        port: None,
+        home: home.display().to_string(),
+        image,
+        created,
+        started_at: "2026-11-06T00:00:00Z".to_owned(),
+        log_path: String::new(),
+    });
+    let answered = super::process_cmd::answered_start(&state, "i3", &home);
+    assert_eq!(answered.map(|record| record.pid), Some(pid));
+}
+
+/// A record for a different home is not this home's answer either.
+#[test]
+fn a_record_for_another_home_is_not_an_answer() {
+    use o824_state::{ProcessRecord, State};
+
+    let home = std::env::temp_dir();
+    let other = home.join("somewhere-else");
+    let mut state = State::default();
+    state.remember_process(ProcessRecord {
+        install_id: "i3".to_owned(),
+        pid: 0,
+        port: None,
+        home: other.display().to_string(),
+        image: String::new(),
+        created: 1,
+        started_at: "2026-11-06T00:00:00Z".to_owned(),
+        log_path: String::new(),
+    });
+    assert!(super::process_cmd::answered_start(&state, "i3", &home).is_none());
+}

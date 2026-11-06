@@ -324,3 +324,75 @@ the already-running desktop was accepted, not reported as a crash      exit=0
    让同一个客户端要处理两种形状。
 2. **多候选时不报「有 N 个实例」**（§5 的第四条）。Electron 一次启动就是多个进程，报 N 会把"一个实例"
    说成"多个实例"。改为报最早那个进程的 pid，并在注释里写明为什么。
+
+
+---
+
+## 11. 真机复验发现的第二个缺陷（2026-11-06 晚，已修）
+
+用户在真机上复验 §10 的修复时，一半是好消息：进程层探测生效了——
+
+```
+warning: DeepSeek Harness.exe is already running (pid 12920 and 7 more); …
+exit=0
+```
+
+**没有启动新进程、退出码 0**，符合 §2。坏消息是它同时吐出的 JSON 来自一条**陈旧记录**：
+
+```json
+{"installId":"i3","pid":1012,"log":"...desktop-2026-11-06T045533Z-16736.log"}
+```
+
+`pid 1012` 早就不在了；那个日志正是 12:55 那次失败的产物。
+
+### 11.1 两个原因，缺一不可
+
+1. **CLI 信任了记录**：`process_cmd.rs` 在 apply 之后用 `state.processes.get(&install_id)` 取结果，
+   **没有做存活检查**。新加的 `AlreadyRunning` 分支因此根本没被走到——它要等"取不到记录"才触发，
+   而陈旧记录让"取到"成立了。
+2. **apply 没把剪过的 state 存下去**：apply 在启动前已经 `retain(is_alive)` 掉了死记录，但在
+   `AlreadyRunning` 分支**提前返回、不保存**。于是磁盘上的陈旧记录一直躺着，给下一次 `start` 读。
+
+### 11.2 改法
+
+```rust
+// apply：把"什么都没启动"也当成一次要落盘的结果
+fn commit_outcome(state_path, state, outcome, install_id) -> Result<(), Error> {
+    match outcome {
+        StartOutcome::Started(started) => { … remember_process … }
+        StartOutcome::AlreadyRunning(_) => {}
+    }
+    o824_state::save(state_path, &state)      // 剪过的 state 必须写下去
+}
+
+// CLI：记录只有在它点名的进程还活着时才算答案
+pub fn answered_start(state, install_id, home) -> Option<ProcessRecord> {
+    state.processes.get(install_id)
+        .filter(|record| is_alive(record))
+        .cloned()
+        .or_else(|| blocking_record(state, home).cloned())
+}
+```
+
+没有动协议：`AlreadyRunning` 仍然靠"没有记录"表达。
+
+### 11.3 复验（同一台机器，原始命令）
+
+```
+$ o824 start --install i3 --home C:\Users\X_Cyanogen\.dsh --json
+warning: DeepSeek Harness.exe is already running (pid 12920 and 7 more); …
+{"installId":"i3","pid":12920,"port":null,"url":null,"alreadyRunning":true}
+exit=0
+```
+
+并且 `state.json` 里那条 `i3 = 1012` 已消失（进程表清空）。协议路径复跑
+`scripts/kernel-start-check.ps1` 仍是通过。
+
+### 11.4 新增测试
+
+- `crates/o824-apply`：`the_stale_record_is_dropped_even_when_nothing_was_started`（死记录 + `AlreadyRunning`
+  → 落盘后没有记录）、`a_real_start_is_still_recorded`；
+- `crates/o824-cli`：`a_dead_record_is_not_an_answer`（死 pid 不算答案；自己的 pid 算）、
+  `a_record_for_another_home_is_not_an_answer`。
+
+工作区：**423 通过 / 0 失败**；clippy 干净；`cross-check.py` 22 PASS。

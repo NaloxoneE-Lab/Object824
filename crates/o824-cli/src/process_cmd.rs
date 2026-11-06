@@ -231,14 +231,9 @@ pub fn start(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
         return exit_code_of(Some(&error));
     }
 
-    let started = match o824_state::load(&state_path) {
-        Ok(after) => after
-            .processes
-            .get(&install_id)
-            .cloned()
-            .or_else(|| blocking_record(&after, &context.home).cloned()),
-        Err(_) => None,
-    };
+    let started = o824_state::load(&state_path)
+        .ok()
+        .and_then(|after| answered_start(&after, &install_id, &context.home));
     let Some(started) = started else {
         // `apply` records nothing when it found the desktop already running: the process
         // exists but it is not ours. Report that one rather than failing — §2 of the
@@ -626,6 +621,26 @@ pub fn blocking_record<'a>(
         .processes
         .values()
         .find(|record| same_home(&record.home, &home) && is_alive(record))
+}
+
+/// What a start produced, read back from the state file.
+///
+/// A record only answers that question if the process it names is **still alive**. A stale
+/// one — left by a start that failed hours earlier — would otherwise be reported as the thing
+/// we just started, with a pid that does not exist and a log from that failure. That is
+/// exactly what happened on 2026-11-06: the kernel answered `AlreadyRunning`, recorded
+/// nothing, and the CLI handed the user `pid 1012` from the previous crash.
+pub fn answered_start(
+    state: &o824_state::State,
+    install_id: &str,
+    home: &Path,
+) -> Option<ProcessRecord> {
+    state
+        .processes
+        .get(install_id)
+        .filter(|record| is_alive(record))
+        .cloned()
+        .or_else(|| blocking_record(state, home).cloned())
 }
 
 /// True when two paths name the same directory, ignoring case and spelling.
