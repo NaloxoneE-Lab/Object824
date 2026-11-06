@@ -226,3 +226,42 @@ fn a_repair_that_rebuilt_a_link_is_undone_by_the_rollback() {
     );
     assert!(bridge.close());
 }
+
+/// The defect of 2026-11-06, end to end through the protocol the window uses.
+///
+/// The desktop is single-instance: when it is already running, a second launch hands the
+/// request over and exits 0. Before the fix, the kernel read that as a crash and reported
+/// "the app exited right after starting" for something that was fine.
+///
+/// Ignored by default because it needs a DSH desktop running on this machine, which CI has
+/// not. It uses the real machine rather than a fixture on purpose: a fixture's desktop
+/// executable is a placeholder, and the probe matches on the image of the process that is
+/// actually running.
+#[test]
+#[ignore]
+fn starting_a_desktop_that_is_already_running_succeeds() {
+    // A binary inside the workspace carries a low-integrity label, so a kernel started from
+    // it cannot write to %LOCALAPPDATA%; point this at an installed copy instead.
+    let program = std::env::var_os("O824_TEST_KERNEL")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(binary);
+    let mut bridge = Bridge::start(&Options {
+        program: Some(program),
+        ..Options::default()
+    })
+    .expect("start");
+
+    let installs = bridge.discover().expect("discover");
+    let Some(desktop) = installs.iter().find(|install| install.kind == "desktop") else {
+        println!("no desktop installation on this machine; nothing to test");
+        return;
+    };
+
+    let plan = bridge.plan(&desktop.install_id, "start").expect("plan");
+    let applied = bridge.apply(&plan);
+    match applied {
+        Ok(_) => println!("apply reported success for an already-running desktop"),
+        Err(error) => panic!("a desktop that is already running must not fail: {error:?}"),
+    }
+    assert!(bridge.close());
+}

@@ -217,6 +217,13 @@ pub fn start(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
             return exit_code_of(Some(&error));
         }
     };
+    // The plan names the executable it will start; kept for the "someone else
+    // started it" answer below, where there is no record to point at.
+    let desktop_exe = plan
+        .steps
+        .iter()
+        .find(|step| step.kind == o824_plan::KIND_START_DESKTOP)
+        .map(|step| PathBuf::from(&step.path));
     let scope = PathBuf::from(&install.root);
     if let Err(error) = o824_apply::run(&context.data_root, &mut plan, &scope) {
         // A failed start leaves no record behind: apply removes the provisional one.
@@ -233,6 +240,34 @@ pub fn start(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) ->
         Err(_) => None,
     };
     let Some(started) = started else {
+        // `apply` records nothing when it found the desktop already running: the process
+        // exists but it is not ours. Report that one rather than failing — §2 of the
+        // 2026-11-06 note: "report that pid and exit 0".
+        if let Some(pid) = desktop_exe
+            .as_deref()
+            .and_then(o824_formproc::desktop::running_instance)
+        {
+            if flags.flag("json") {
+                let _ = writeln!(
+                    stdout,
+                    "{}",
+                    serde_json::json!({
+                        "installId": install_id,
+                        "pid": pid,
+                        "port": serde_json::Value::Null,
+                        "url": serde_json::Value::Null,
+                        "alreadyRunning": true,
+                    })
+                );
+            } else {
+                let _ = writeln!(
+                    stdout,
+                    "o824 start: {} is already running (pid {pid}); nothing was started",
+                    install_id
+                );
+            }
+            return EXIT_OK;
+        }
         let error = Error::new(
             Code::Internal,
             "o824 start: the plan ran but recorded no process",
@@ -396,6 +431,8 @@ pub fn stop(args: &[String], stdout: &mut dyn Write, stderr: &mut dyn Write) -> 
             return exit_code_of(Some(&error));
         }
     };
+    // The plan names the executable it will start; kept for the "someone else started it"
+    // answer below, where there is no record to point at.
     let scope = PathBuf::from(&install.root);
     if let Err(error) = o824_apply::run(&data_root, &mut plan, &scope) {
         let _ = writeln!(stderr, "{error}");

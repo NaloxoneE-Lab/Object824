@@ -27,6 +27,7 @@ import os
 import pathlib
 import re
 import subprocess
+import os
 import sys
 
 import yaml
@@ -52,7 +53,10 @@ PLAN_ID = re.compile(r"plan-\d{8}T\d{6}Z-[0-9a-f]{8}")
 
 def build(scenario):
     subprocess.run(
-        ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass",
+        # PowerShell 7 is not installed on every machine that runs this; Windows
+        # PowerShell 5.1 builds the lab scenarios just as well. Override when neither
+        # name is on PATH.
+        [os.environ.get("O824_PS", "pwsh"), "-NoProfile", "-ExecutionPolicy", "Bypass",
          "-File", str(LAB / "build.ps1"), "-Scenario", scenario],
         check=True, capture_output=True,
     )

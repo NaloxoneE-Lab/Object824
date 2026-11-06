@@ -62,6 +62,20 @@ pub struct Started {
     pub record: ProcessRecord,
 }
 
+/// What a start produced.
+///
+/// `AlreadyRunning` is a **success**: the form someone asked for is running, and the pid is
+/// the answer. It is not `E_CONCURRENT_INSTANCE` either — that code means "this home already
+/// has an instance and you asked for a second one", which is a refusal. This is the case where
+/// the desktop was started by someone else and the right answer is its pid.
+#[derive(Clone, Debug)]
+pub enum StartOutcome {
+    /// We spawned it.
+    Started(Started),
+    /// Something was already running; nothing was spawned and nothing should be recorded.
+    AlreadyRunning(u32),
+}
+
 /// What a stop did.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StopOutcome {
@@ -101,7 +115,7 @@ pub fn start(
     data_root: &Path,
     port: Option<u16>,
     record: &mut dyn FnMut(&ProcessRecord) -> Result<(), Error>,
-) -> Result<Started, Error> {
+) -> Result<StartOutcome, Error> {
     match form {
         Form::Web => {
             let started = crate::start(
@@ -112,24 +126,24 @@ pub fn start(
                 crate::START_TIMEOUT,
                 record,
             )?;
-            Ok(Started {
+            Ok(StartOutcome::Started(Started {
                 pid: started.pid,
                 url: Some(started.url),
                 port: started.port,
                 log_path: started.log_path,
                 record: started.record,
-            })
+            }))
         }
-        Form::Desktop => {
-            let started = desktop::start(executable, &[], home, data_root, record)?;
-            Ok(Started {
+        Form::Desktop => match desktop::start(executable, &[], home, data_root, record)? {
+            desktop::StartOutcome::AlreadyRunning(pid) => Ok(StartOutcome::AlreadyRunning(pid)),
+            desktop::StartOutcome::Started(started) => Ok(StartOutcome::Started(Started {
                 pid: started.pid,
                 url: None,
                 port: None,
                 log_path: started.log_path,
                 record: started.record,
-            })
-        }
+            })),
+        },
     }
 }
 

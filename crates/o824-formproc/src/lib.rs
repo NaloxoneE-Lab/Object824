@@ -664,8 +664,22 @@ mod tests {
             "30".to_owned(),
             "127.0.0.1".to_owned(),
         ];
-        let started = desktop::start(&exe, &args, &home, temp.path(), &mut |_record| Ok(()))
-            .expect("the stand-in starts");
+        // The probe says nothing is running, so this really does start the stand-in.
+        let outcome = desktop::start_with(
+            &exe,
+            &args,
+            &home,
+            temp.path(),
+            &mut |_record| Ok(()),
+            &|_| None,
+        )
+        .expect("the stand-in starts");
+        let started = match outcome {
+            desktop::StartOutcome::Started(started) => started,
+            desktop::StartOutcome::AlreadyRunning(pid) => {
+                panic!("nothing was running, but the probe reported pid {pid}")
+            }
+        };
 
         let creation = started_at(started.pid);
         assert_eq!(

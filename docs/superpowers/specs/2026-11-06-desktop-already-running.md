@@ -256,3 +256,71 @@ o824 start --install <desktop 的 id> --json   # → {"status":"already-running"
 不用。界面上 `apply` 成功后会显示"已启动 desktop"；如果想更准确，可在
 `D:\dsh work\O824-HG` 的 `src/kernel.rs` 里把 apply 结果里的 `alreadyRunning` 读出来，
 把 `sub_tip` 改成"已在运行"。那是另一个仓库的独立小改动，可选。
+
+
+---
+
+## 10. 施工结果（2026-11-06，同一会话完成）
+
+按 §9 的施工单做完了，另外发现一件文档没预料到的事。
+
+### 10.1 做了什么
+
+| 位置 | 改动 |
+|---|---|
+| `crates/o824-formproc/src/desktop.rs` | 新增 `running_instance(exe)`（镜像路径匹配）、`earliest(pids, created)`（按创建时间取最早）、`StartOutcome{Started, AlreadyRunning}`；`start` 变薄壳，`start_with(..., probe)` 接收注入的探测 |
+| `crates/o824-formproc/src/lifecycle.rs` | 新增 `lifecycle::StartOutcome{Started, AlreadyRunning}`；`start` 返回它，web 形态包成 `Started`，desktop 形态透传 |
+| `crates/o824-apply/src/process.rs` | `let StartOutcome::Started(started) = outcome else { return Ok(()) };` —— **不写记录** |
+| `crates/o824-cli/src/process_cmd.rs` | 记录找不到时，回落到 `desktop::running_instance`，报 `already-running` 并退 0 |
+| `scripts/kernel-start-check.ps1` | 新增：直接驱动内核协议（discover → plan → apply），就是窗口走的那条路 |
+| `scripts/lab-compare.py` | 顺手：`pwsh` 改成可用 `O824_PS` 覆盖（本机没装 PowerShell 7，只有 5.1） |
+
+探测放在**创建日志文件之前**：这正是原来那个 0 字节 `desktop-*.log` 的来源。
+
+### 10.2 文档没预料到的一点：Electron 的多个进程
+
+§5 假设「按镜像路径命中候选进程」得到的就是那个桌面实例。真机上有 **7 个进程共用同一个镜像**（主进程 + 渲染器 + GPU + utility），照 §9.1 的 `.find(...)` 取第一个，报出来的可能是渲染进程的 pid——一个用户拿去 `stop` 会失败的数字。
+
+处理：镜像筛完之后**取创建时间最早的那个**（Electron 的主进程先起）。`earliest()` 单独成函数以便测试；读不到创建时间时退回第一个候选，而不是假装没有实例。
+
+真机验证（DSH 桌面开着）：
+
+```
+running_instance(D:\...\Programs\DeepSeek Harness\DeepSeek Harness.exe) = Some(16444)
+```
+
+### 10.3 真机验收（§9.6 那两条）
+
+用 `scripts/kernel-start-check.ps1` 走**协议**（不是 CLI 的预检），因为 GUI/kernel 才是出事的那条路：
+
+```
+kernel: C:\Users\X_Cyanogen\AppData\Local\o824\o824.exe
+desktop install: i3  version 0.2.1-rc.3
+plan: plan-20261106T084508Z-7fbc3cda  steps: start-desktop
+the already-running desktop was accepted, not reported as a crash      exit=0
+```
+
+修复前这条链的答复是 `启动失败：desktop: the app exited (exit code: 0) right after starting`。
+
+> 脚本必须从**安装位置**运行：从构建目录起的内核是 Low IL，写不了 `%LOCALAPPDATA%\o824` 下的计划文件
+> （`cannot write the plan: 拒绝访问`）。这不是本缺陷的一部分，是同一条完整性规则。
+
+### 10.4 测试
+
+新增 5 个（`cargo test -p o824-formproc`）：
+
+- `an_existing_instance_is_reported_and_nothing_is_started`：probe 返回 `Some(4242)` → `AlreadyRunning(4242)`，且 `logs/` 下**没有**新文件；
+- `with_nothing_running_the_check_under_test_is_the_probe_itself`：probe 被调用一次，且传 `None` 时走到了 spawn（失败于"不是程序"，正是预期）；
+- `the_earliest_process_wins`：三个 pid 取创建时间最早的；读不到时间时退回第一个；
+- `a_path_that_differs_does_not_count_as_the_same_image`：不同路径不互相命中；
+- `the_real_probe_finds_a_running_desktop`（`#[ignore]`，真机跑）。
+
+工作区：**419 通过 / 0 失败**；clippy 干净；`cross-check.py` 22 PASS；`lab-compare.py` 6/6。
+
+### 10.5 与 §9 的两处偏差，说明理由
+
+1. **JSON 字段用 `alreadyRunning`，不是 §9.4 草稿里的 `"status":"already-running"`**。CLI 顶部的预检早就在发
+   `alreadyRunning: true`，`D:\dsh work\O824-HG` 也是按这个键读的（§9.8）。为一个新分支再发明一个字段，会
+   让同一个客户端要处理两种形状。
+2. **多候选时不报「有 N 个实例」**（§5 的第四条）。Electron 一次启动就是多个进程，报 N 会把"一个实例"
+   说成"多个实例"。改为报最早那个进程的 pid，并在注释里写明为什么。

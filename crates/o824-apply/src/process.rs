@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use o824_errs::{Code, Error};
-use o824_formproc::lifecycle::{self, Form, StopOutcome};
+use o824_formproc::lifecycle::{self, Form, StartOutcome, StopOutcome};
 use o824_plan::Step;
 
 /// Runs one process step against `data_root`'s state.
@@ -52,7 +52,7 @@ fn start(data_root: &Path, install_id: &str, step: &Step, form: Form) -> Result<
         .processes
         .retain(|_, record| lifecycle::is_alive(record));
 
-    let started = lifecycle::start(form, &executable, &home, data_root, port, &mut |record| {
+    let outcome = lifecycle::start(form, &executable, &home, data_root, port, &mut |record| {
         // Written before the readiness wait: if this process dies while waiting, the
         // record is the only thing that can still stop the server.
         let mut record = record.clone();
@@ -61,6 +61,13 @@ fn start(data_root: &Path, install_id: &str, step: &Step, form: Form) -> Result<
         interim.remember_process(record);
         o824_state::save(&state_path, &interim)
     })?;
+
+    // A desktop the user started themselves is running already; nothing was spawned, so
+    // nothing is recorded. Writing a record for a pid we did not create would let `stop` kill
+    // a process o824 does not own.
+    let StartOutcome::Started(started) = outcome else {
+        return Ok(());
+    };
 
     let mut record = started.record.clone();
     record.install_id = install_id.to_owned();
