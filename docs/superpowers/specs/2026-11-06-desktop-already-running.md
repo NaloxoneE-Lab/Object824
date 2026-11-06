@@ -106,3 +106,153 @@ CLI 输出里，而不是假装知道 home。
 
 O824-HG 侧（`D:\dsh work\O824-HG`）在这条链路上完全正常：`click_main_btn` → `plan` → `apply`
 → 进度行 → 结果回显都跑通了。修完这里，那边不需要动。
+
+---
+
+## 9. 施工单（给下一个会话，2026-11-06）
+
+已经核过的事实，不必再查：
+
+- `crates/o824-formproc/Cargo.toml` **已经依赖** `o824-discovery`，所以进程层可以直接用，不用新增依赖边。
+- `o824_discovery::EXE_NAME == "DeepSeek Harness.exe"`（`crates/o824-discovery/src/lib.rs:61`），
+  `o824_discovery::host_processes() -> Vec<RunningHost{pid, image}>`（`src/processes.rs:25`）
+  返回**全部**该镜像名的进程，已带完整 image 路径。这正是桌面形态要的东西。
+- `lifecycle::start` 的唯一调用点是 `crates/o824-apply/src/process.rs:55`。
+- 现有错误码 `Code::ConcurrentInstance`（`E_CONCURRENT_INSTANCE`）语义是"同一 home 上已有实例"，
+  **不要**拿它表示"已在运行且成功"——那是成功路径，不是错误。
+- `StopOutcome`（`lifecycle.rs:67`）已经确立了"显式枚举结果"的写法，照它办。
+
+### 9.1 `crates/o824-formproc/src/desktop.rs`
+
+在函数**最开头**（创建日志文件之前——否则每次启动都会留下一个 0 字节的
+`desktop-*.log`，这次事故里那个空文件就是这么来的）加探测：
+
+```rust
+/// A running desktop app whose image is `exe`. The weak promise: image path only,
+/// so an instance serving a different DSH home looks like this one.
+pub fn running_instance(exe: &Path) -> Option<u32> {
+    let want = exe.canonicalize().unwrap_or_else(|_| exe.to_path_buf());
+    o824_discovery::host_processes()
+        .into_iter()
+        .find(|host| {
+            let have = Path::new(&host.image);
+            have.canonicalize().map(|p| p == want).unwrap_or(false)
+        })
+        .map(|host| host.pid)
+}
+```
+
+并给 `start` 加一个可注入的探测参数（否则 9.3 的用例在 CI 上没法测）：
+
+```rust
+pub fn start(
+    exe: &Path, args: &[String], home: &Path, data_root: &Path,
+    on_spawned: &mut dyn FnMut(&ProcessRecord) -> Result<(), Error>,
+) -> Result<StartOutcome, Error> {
+    start_with(exe, args, home, data_root, on_spawned, &running_instance)
+}
+
+pub fn start_with(
+    exe: &Path, args: &[String], home: &Path, data_root: &Path,
+    on_spawned: &mut dyn FnMut(&ProcessRecord) -> Result<(), Error>,
+    probe: &dyn Fn(&Path) -> Option<u32>,
+) -> Result<StartOutcome, Error> {
+    if let Some(pid) = probe(exe) {
+        return Ok(StartOutcome::AlreadyRunning(pid));
+    }
+    // …原有实现原样保留，最后 Ok(StartOutcome::Started(Started{…}))
+}
+```
+
+### 9.2 `crates/o824-formproc/src/lifecycle.rs`
+
+```rust
+/// What a start produced.
+#[derive(Clone, Debug)]
+pub enum StartOutcome {
+    /// We spawned it.
+    Started(Started),
+    /// Something was already running and we did not spawn anything.
+    AlreadyRunning(u32),
+}
+```
+
+`lifecycle::start` 的返回类型改为 `Result<StartOutcome, Error>`：
+
+- `Form::Web` → 包一层 `StartOutcome::Started`
+- `Form::Desktop` → 直接返回 `desktop::start(...)` 的结果
+
+### 9.3 `crates/o824-apply/src/process.rs:55`
+
+```rust
+let outcome = lifecycle::start(form, &executable, &home, data_root, port, &mut |record| { … })?;
+let StartOutcome::Started(started) = outcome else {
+    // Nothing was started, so nothing is recorded: writing a record for a pid we did
+    // not spawn would make `stop` kill a process o824 does not own.
+    return Ok(());
+};
+```
+
+（`use` 行改成 `use o824_formproc::lifecycle::{self, Form, StartOutcome, StopOutcome};`）
+
+### 9.4 CLI：不写记录之后别误伤
+
+`crates/o824-cli/src/process_cmd.rs:235` 在 apply 之后从 state 里找记录，找不到就报
+`"o824 start: the plan ran but recorded no process"`。走 apply 的 `AlreadyRunning` 分支时
+**没有记录**，会撞上这条。改法（改动最小、不动协议）：
+
+```rust
+let started = …原有查找…;
+let Some(started) = started else {
+    // apply may have found an instance it did not start; report that one instead.
+    let exe = …desktop 可执行文件路径（与 plan 用的同一个）…;
+    if let Some(pid) = o824_formproc::desktop::running_instance(&exe) {
+        if flags.flag("json") {
+            let _ = writeln!(stdout, r#"{{"status":"already-running","pid":{pid}}}"#);
+        } else {
+            let _ = writeln!(stdout, "o824 start: desktop 已在运行 (pid {pid})");
+        }
+        return EXIT_OK;
+    }
+    …原来的报错…
+};
+```
+
+退出码 0，符合 §2 的"报告那个 pid 并以 0 退出"。
+
+### 9.5 测试（`crates/o824-formproc/src/desktop.rs` 的 `#[cfg(test)]`）
+
+probe 是注入的，所以四个用例不需要真进程：
+
+| 用例 | 做法 | 断言 |
+|---|---|---|
+| 已有实例 | `probe` 返回 `Some(4242)` | `Ok(AlreadyRunning(4242))`，且 `logs/` 下**没有**新文件 |
+| 没有实例 | `probe` 返回 `None`，`exe` 指向一个临时假 exe | 走到 spawn 路径（可用一个立刻退出的 `cmd` 桩） |
+| 两个实例 | `running_instance` 只取第一个；另加单测覆盖排序稳定性 | 返回稳定 pid |
+| 镜像不同 | `probe` 比较路径时用 `canonicalize` | 不同路径不命中 |
+
+`running_instance` 本身另写一个 `#[ignore]` 的真机用例（本机开着 DSH 桌面时才跑）。
+
+### 9.6 验收
+
+```bash
+source scripts/env.sh && source scripts/env-msvc.sh
+cargo +stable-x86_64-pc-windows-msvc test -p o824-formproc -p o824-apply
+cargo +stable-x86_64-pc-windows-msvc clippy --all-targets -- -D warnings
+# 真机：DSH 桌面开着时
+o824 start --install <desktop 的 id> --json   # → {"status":"already-running","pid":N}，exit 0
+# 关掉 DSH 桌面再跑一次                        # → 真正拉起，仍按 SETTLE 判就绪
+```
+
+### 9.7 不要做的事
+
+- 不要改 `o824-kernel` 的协议（仍然只有 plan/apply）。
+- 不要把 `AlreadyRunning` 做成 `Err`——它是成功。
+- 不要为了这个改动去读别的进程的环境块（PEB）；§5 已经拍板接受弱承诺。
+- 不要动 web / tui 两个形态。
+
+### 9.8 改完之后 O824-HG 侧要不要动
+
+不用。界面上 `apply` 成功后会显示"已启动 desktop"；如果想更准确，可在
+`D:\dsh work\O824-HG` 的 `src/kernel.rs` 里把 apply 结果里的 `alreadyRunning` 读出来，
+把 `sub_tip` 改成"已在运行"。那是另一个仓库的独立小改动，可选。
